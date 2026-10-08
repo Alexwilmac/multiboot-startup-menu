@@ -1,0 +1,154 @@
+# Italiano translation of MultiBootStartupMenu.
+# This file is distributed under the same licence as the plugin (GPL-2.0-only).
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: MultiBootStartupMenu\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "%d seconds"
+msgstr "%d secondi"
+
+msgid "Adds the Recovery image (slot 0) as the first entry of the list, and lets you choose it as the default image.\nFound: %s"
+msgstr "Aggiunge l'immagine di Recovery (slot 0) come prima voce dell'elenco e permette di sceglierla come immagine predefinita.\nTrovata: %s"
+
+msgid "Auto start in"
+msgstr "Avvio tra"
+
+msgid "Automatic start after"
+msgstr "Avvio automatico dopo"
+
+msgid "Choose the image to start"
+msgstr "Scegli l'immagine da avviare"
+
+msgid "Choose the image to start at every power-on"
+msgstr "Scegli l'immagine da avviare a ogni accensione"
+
+msgid "Current state: %s"
+msgstr "Stato attuale: %s"
+
+msgid "Default image"
+msgstr "Immagine predefinita"
+
+msgid "Direct start"
+msgstr "Avvio diretto"
+
+msgid "If no key is pressed, the highlighted image starts automatically after this time."
+msgstr "Se non si preme alcun tasto, dopo questo tempo si avvia l'immagine evidenziata."
+
+msgid "Last started image"
+msgstr "Ultima immagine avviata"
+
+msgid "Leave the boot menu settings?"
+msgstr "Uscire dalle impostazioni del menu di avvio?"
+
+msgid "MultiBoot startup menu setup"
+msgstr "Configurazione menu avvio Multiboot"
+
+msgid "No Recovery image was found in the boot partition (STARTUP_RECOVERY or the image itself is missing), so it cannot be added to the menu."
+msgstr "Nella partizione di avvio non è stata trovata un'immagine di Recovery (manca STARTUP_RECOVERY o l'immagine stessa): non può essere aggiunta al menu."
+
+msgid "No bootable image found."
+msgstr "Nessuna immagine avviabile trovata."
+
+msgid "Preparing the boot menu, please wait..."
+msgstr "Preparazione del menu di avvio, attendere..."
+
+msgid "Preparing the preview, please wait..."
+msgstr "Preparazione dell'anteprima, attendere..."
+
+msgid "Press OK to start the highlighted image"
+msgstr "Premi OK per avviare l'immagine evidenziata"
+
+msgid "Preview"
+msgstr "Anteprima"
+
+msgid "Recovery"
+msgstr "Recovery"
+
+msgid "Recovery mode"
+msgstr "Modalità Recovery"
+
+msgid "Select"
+msgstr "Scegli"
+
+msgid "Show the Recovery in the menu"
+msgstr "Mostra la Recovery nel menu"
+
+msgid "Show the boot menu at startup"
+msgstr "Mostra il menu di avvio all'accensione"
+
+msgid "Slot %d"
+msgstr "Slot %d"
+
+msgid "Start"
+msgstr "Avvia"
+
+msgid "Starting %s…"
+msgstr "Avvio di %s…"
+
+msgid "The Python imaging library (PIL) is missing."
+msgstr "Manca la libreria grafica di Python (PIL)."
+
+msgid "The boot menu could not be disabled:\n%s"
+msgstr "Impossibile disattivare il menu di avvio:\n%s"
+
+msgid "The boot menu could not be enabled:\n%s"
+msgstr "Impossibile attivare il menu di avvio:\n%s"
+
+msgid "The boot menu could not start at the last boot: the default image was started instead.\nDetails in /boot/bootmenu/bootmenu.log"
+msgstr "All'ultimo avvio il menu non è partito ed è stata avviata l'immagine predefinita.\nDettagli in /boot/bootmenu/bootmenu.log"
+
+msgid "The boot menu could not start twice in a row and has been disabled automatically.\nDetails in /boot/bootmenu/bootmenu.log"
+msgstr "Il menu di avvio non è partito per due volte di seguito ed è stato disattivato automaticamente.\nDettagli in /boot/bootmenu/bootmenu.log"
+
+msgid "The boot menu did not answer in time. Look at the log for details."
+msgstr "Il menu di avvio non ha risposto in tempo. Guarda il log per i dettagli."
+
+msgid "The boot menu has been disabled: the receiver will start slot %d directly."
+msgstr "Il menu di avvio è stato disattivato: il decoder avvierà direttamente lo slot %d."
+
+msgid "The boot menu is active and will appear at the next start of the receiver.\n\nRestart now to try it?"
+msgstr "Il menu di avvio è attivo e comparirà al prossimo avvio del decoder.\n\nRiavviare ora per provarlo?"
+
+msgid "The boot menu never started since it was activated and STARTUP was changed in the meantime: it has been disabled for safety. You can enable it again from the plugin."
+msgstr "Il menu di avvio non è mai partito da quando è stato attivato e nel frattempo STARTUP è stato cambiato: per sicurezza è stato disattivato. Puoi riattivarlo dal plugin."
+
+msgid "The boot menu was skipped at the last boot and the Recovery was started.\nDetails in /boot/bootmenu/status and bootmenu.log"
+msgstr "All'ultimo avvio il menu è stato saltato ed è partita la Recovery.\nDettagli in /boot/bootmenu/status e bootmenu.log"
+
+msgid "The changes have not been saved.\nLeave anyway?"
+msgstr "Le modifiche non sono state salvate.\nUscire ugualmente?"
+
+msgid "The image highlighted when the menu appears. 'Last started image' follows your last choice."
+msgstr "L'immagine evidenziata quando compare il menu. 'Ultima immagine avviata' segue l'ultima scelta fatta."
+
+msgid "The preview could not be shown:\n%s"
+msgstr "Impossibile mostrare l'anteprima:\n%s"
+
+msgid "This image cannot be started (missing or incomplete)"
+msgstr "Questa immagine non si può avviare (assente o incompleta)"
+
+msgid "This receiver is not supported by this version of the boot menu."
+msgstr "Questo decoder non è supportato da questa versione del menu di avvio."
+
+msgid "VU+ MULTIBOOT"
+msgstr "VU+ MULTIBOOT"
+
+msgid "When enabled, the receiver shows the list of the MultiBoot slots at every start and lets you choose with the remote control."
+msgstr "Se attivo, a ogni accensione il decoder mostra l'elenco degli slot MultiBoot e permette di scegliere con il telecomando."
+
+msgid "active"
+msgstr "attivo"
+
+msgid "active (STARTUP changed by another image: it will be restored)"
+msgstr "attivo (STARTUP modificato da un'altra immagine: verrà ripristinato)"
+
+msgid "not active"
+msgstr "non attivo"
+
+msgid "s"
+msgstr "s"

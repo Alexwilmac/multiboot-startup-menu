@@ -1,0 +1,154 @@
+# English translation of MultiBootStartupMenu.
+# This file is distributed under the same licence as the plugin (GPL-2.0-only).
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: MultiBootStartupMenu\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "%d seconds"
+msgstr "%d seconds"
+
+msgid "Adds the Recovery image (slot 0) as the first entry of the list, and lets you choose it as the default image.\nFound: %s"
+msgstr "Adds the Recovery image (slot 0) as the first entry of the list, and lets you choose it as the default image.\nFound: %s"
+
+msgid "Auto start in"
+msgstr "Auto start in"
+
+msgid "Automatic start after"
+msgstr "Automatic start after"
+
+msgid "Choose the image to start"
+msgstr "Choose the image to start"
+
+msgid "Choose the image to start at every power-on"
+msgstr "Choose the image to start at every power-on"
+
+msgid "Current state: %s"
+msgstr "Current state: %s"
+
+msgid "Default image"
+msgstr "Default image"
+
+msgid "Direct start"
+msgstr "Direct start"
+
+msgid "If no key is pressed, the highlighted image starts automatically after this time."
+msgstr "If no key is pressed, the highlighted image starts automatically after this time."
+
+msgid "Last started image"
+msgstr "Last started image"
+
+msgid "Leave the boot menu settings?"
+msgstr "Leave the boot menu settings?"
+
+msgid "MultiBoot startup menu setup"
+msgstr "MultiBoot startup menu setup"
+
+msgid "No Recovery image was found in the boot partition (STARTUP_RECOVERY or the image itself is missing), so it cannot be added to the menu."
+msgstr "No Recovery image was found in the boot partition (STARTUP_RECOVERY or the image itself is missing), so it cannot be added to the menu."
+
+msgid "No bootable image found."
+msgstr "No bootable image found."
+
+msgid "Preparing the boot menu, please wait..."
+msgstr "Preparing the boot menu, please wait..."
+
+msgid "Preparing the preview, please wait..."
+msgstr "Preparing the preview, please wait..."
+
+msgid "Press OK to start the highlighted image"
+msgstr "Press OK to start the highlighted image"
+
+msgid "Preview"
+msgstr "Preview"
+
+msgid "Recovery"
+msgstr "Recovery"
+
+msgid "Recovery mode"
+msgstr "Recovery mode"
+
+msgid "Select"
+msgstr "Select"
+
+msgid "Show the Recovery in the menu"
+msgstr "Show the Recovery in the menu"
+
+msgid "Show the boot menu at startup"
+msgstr "Show the boot menu at startup"
+
+msgid "Slot %d"
+msgstr "Slot %d"
+
+msgid "Start"
+msgstr "Start"
+
+msgid "Starting %s…"
+msgstr "Starting %s…"
+
+msgid "The Python imaging library (PIL) is missing."
+msgstr "The Python imaging library (PIL) is missing."
+
+msgid "The boot menu could not be disabled:\n%s"
+msgstr "The boot menu could not be disabled:\n%s"
+
+msgid "The boot menu could not be enabled:\n%s"
+msgstr "The boot menu could not be enabled:\n%s"
+
+msgid "The boot menu could not start at the last boot: the default image was started instead.\nDetails in /boot/bootmenu/bootmenu.log"
+msgstr "The boot menu could not start at the last boot: the default image was started instead.\nDetails in /boot/bootmenu/bootmenu.log"
+
+msgid "The boot menu could not start twice in a row and has been disabled automatically.\nDetails in /boot/bootmenu/bootmenu.log"
+msgstr "The boot menu could not start twice in a row and has been disabled automatically.\nDetails in /boot/bootmenu/bootmenu.log"
+
+msgid "The boot menu did not answer in time. Look at the log for details."
+msgstr "The boot menu did not answer in time. Look at the log for details."
+
+msgid "The boot menu has been disabled: the receiver will start slot %d directly."
+msgstr "The boot menu has been disabled: the receiver will start slot %d directly."
+
+msgid "The boot menu is active and will appear at the next start of the receiver.\n\nRestart now to try it?"
+msgstr "The boot menu is active and will appear at the next start of the receiver.\n\nRestart now to try it?"
+
+msgid "The boot menu never started since it was activated and STARTUP was changed in the meantime: it has been disabled for safety. You can enable it again from the plugin."
+msgstr "The boot menu never started since it was activated and STARTUP was changed in the meantime: it has been disabled for safety. You can enable it again from the plugin."
+
+msgid "The boot menu was skipped at the last boot and the Recovery was started.\nDetails in /boot/bootmenu/status and bootmenu.log"
+msgstr "The boot menu was skipped at the last boot and the Recovery was started.\nDetails in /boot/bootmenu/status and bootmenu.log"
+
+msgid "The changes have not been saved.\nLeave anyway?"
+msgstr "The changes have not been saved.\nLeave anyway?"
+
+msgid "The image highlighted when the menu appears. 'Last started image' follows your last choice."
+msgstr "The image highlighted when the menu appears. 'Last started image' follows your last choice."
+
+msgid "The preview could not be shown:\n%s"
+msgstr "The preview could not be shown:\n%s"
+
+msgid "This image cannot be started (missing or incomplete)"
+msgstr "This image cannot be started (missing or incomplete)"
+
+msgid "This receiver is not supported by this version of the boot menu."
+msgstr "This receiver is not supported by this version of the boot menu."
+
+msgid "VU+ MULTIBOOT"
+msgstr "VU+ MULTIBOOT"
+
+msgid "When enabled, the receiver shows the list of the MultiBoot slots at every start and lets you choose with the remote control."
+msgstr "When enabled, the receiver shows the list of the MultiBoot slots at every start and lets you choose with the remote control."
+
+msgid "active"
+msgstr "active"
+
+msgid "active (STARTUP changed by another image: it will be restored)"
+msgstr "active (STARTUP changed by another image: it will be restored)"
+
+msgid "not active"
+msgstr "not active"
+
+msgid "s"
+msgstr "s"

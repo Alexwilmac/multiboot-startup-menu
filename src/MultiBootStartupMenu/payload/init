@@ -1,0 +1,92 @@
+#!/bin/sh
+# MultiBootStartupMenu - initrd wrapper (/init)
+# Copyright (C) 2026 AlexWilMac
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Loaded by the Vu+ kexec 1st stage when /STARTUP contains
+#   initrd=bootmenu/bootmenu.cpio.gz
+# This initrd is a copy of the box's own STARTUP.cpio.gz: the original
+# 2nd-stage script is kept as /init.stage2 and used as the fallback.
+#
+# If the boot menu is installed and enabled, control is handed over to
+# /bootmenu/menu-init inside the Recovery rootfs (switch_root).
+# In every other case the original 2nd stage runs unchanged, which boots
+# what /STARTUP describes (the Recovery, linuxrootfs0).
+
+LOGGER="BOOTMENU-INIT"
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+LOGF=""
+
+say() {
+	echo "$LOGGER: $1"
+	[ -n "$LOGF" ] && echo "$LOGGER: $1" >> "$LOGF"
+}
+
+fallback() {
+	say "$1 -> original 2nd stage"
+	sync
+	umount /newroot/dev 2>/dev/null
+	umount /newroot 2>/dev/null
+	umount /sys 2>/dev/null
+	umount /proc 2>/dev/null
+	exec /init.stage2
+}
+
+mount -n -t proc proc /proc
+mount -n -t sysfs sysfs /sys
+# never hang forever on a kernel panic: reboot after 10 s
+echo 10 > /proc/sys/kernel/panic 2>/dev/null
+
+ROOT=""
+for x in $(cat /proc/cmdline); do
+	case "$x" in
+		root=*) ROOT="${x#root=}" ;;
+	esac
+done
+[ -n "$ROOT" ] || fallback "no root= on the kernel command line"
+
+mdev -s
+CNT=0
+while [ ! -b "$ROOT" ] && [ $CNT -lt 150 ]; do
+	usleep 200000
+	mdev -s
+	CNT=$((CNT + 1))
+done
+[ -b "$ROOT" ] || fallback "root device $ROOT not found"
+
+mkdir -p /newroot
+mount -n "$ROOT" /newroot || fallback "cannot mount $ROOT"
+LOGF=/newroot/kexec-multiboot.log
+BM=/newroot/bootmenu
+
+say "kexec boot menu wrapper started"
+# proof for the plugin that this initrd can be loaded and started
+rm -f $BM/.unverified
+
+# A previous hand-over did not reach menu-init: do not try again now.
+if [ -f $BM/.wrapper_pending ]; then
+	rm -f $BM/.wrapper_pending
+	echo "WRAPPER_FAILED previous switch_root to menu-init did not complete" > $BM/status
+	fallback "previous hand-over to menu-init failed"
+fi
+
+[ -f $BM/menu-init ] || fallback "menu-init missing"
+[ -x /newroot/bin/sh ] || [ -L /newroot/bin/sh ] || fallback "Recovery /bin/sh missing"
+grep -q '^ENABLED=1' $BM/bootmenu.conf 2>/dev/null || fallback "boot menu disabled"
+chmod 755 $BM/menu-init 2>/dev/null
+
+mkdir -p /newroot/dev
+mount -n -t devtmpfs devtmpfs /newroot/dev || fallback "cannot mount devtmpfs"
+
+echo "$$" > $BM/.wrapper_pending
+sync
+say "switch_root to /bootmenu/menu-init"
+umount /sys 2>/dev/null
+umount /proc 2>/dev/null
+exec switch_root /newroot /bootmenu/menu-init
+
+# only reached if exec itself failed before switch_root took over
+mount -n -t proc proc /proc 2>/dev/null
+rm -f $BM/.wrapper_pending
+fallback "switch_root failed"
