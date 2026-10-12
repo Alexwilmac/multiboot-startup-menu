@@ -355,8 +355,20 @@ def pending_notice():
 	return None
 
 
+def why_not_available():
+	"""One line in the log when the plugin keeps out of the way, so that a
+	user on an untested receiver can report the exact model string instead of
+	just 'it does not appear'."""
+	try:
+		return "model=%r in the tested list=%s, kexec multiboot=%s, boot layout=%s" % (
+			MODEL, MODEL in SUPPORTED_MODELS, bool(SystemInfo.get("HasKexecMultiboot")), BootEnv().is_kexec_layout())
+	except Exception as err:
+		return "could not be determined: %s" % err
+
+
 def on_session_start(session):
 	if not is_available():
+		print("[MultiBootStartupMenu] not active here: %s" % why_not_available())
 		return
 	install_patches()
 	env = BootEnv()

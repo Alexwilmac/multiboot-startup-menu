@@ -2,6 +2,17 @@
 
 All the versions before 0.4.0 were called KexecBootMenu and were not published.
 
+## 0.5.0
+
+Also runs on the Vu+ Solo 4K and Duo 4K SE, reported working by a forum
+tester. Nothing else changed: no part of the plugin depends on the receiver
+model - not the partition numbers, not the paths - so the whole change is the
+list of models it is willing to run on.
+
+When the plugin stays out of the way, it now writes one line in the debug log
+saying which model string it saw and which of the three conditions failed, so
+that a report from an untested receiver can be acted on.
+
 ## 0.4.0
 
 Renamed. The plugin, the package and the translation domain are now

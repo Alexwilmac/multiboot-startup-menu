@@ -12,9 +12,12 @@ MultiBoot already provides: the `initrd=` option that the 1st stage
 slot exactly once. The menu itself runs from the Recovery, before any image is
 started.
 
-- **Receivers:** Vu+ Ultimo4K. Other Vu+ 4K models use the same mechanism and
-  can be added once someone tests them; the plugin checks the model and keeps
-  out of the way on anything else.
+- **Receivers:** Vu+ Ultimo 4K, Solo 4K, Duo 4K SE — the ones it has actually
+  been tried on. The other Vu+ 4K models use the same mechanism and can be
+  added as soon as someone tests them: nothing in the plugin depends on the
+  model, so it is one line in `SUPPORTED_MODELS` plus your test. On anything
+  else the plugin does not appear at all, and writes one line in the debug log
+  with the model string it saw — send me that line and the two commands below.
 - **Images:** OpenBH 5.6 and 6.0.x, OpenATV 7.x. Any image with the kexec
   MultiBoot and Python 3.
 - **Requires:** a Recovery image in the boot partition (the stock one), and

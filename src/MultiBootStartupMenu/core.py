@@ -12,12 +12,21 @@ import os
 import shutil
 import time
 
-VERSION = "0.4.0"
-BOOT = "/boot"  # root of mmcblk0p4 (Recovery + slots) as mounted in a Vu+ kexec slot
+VERSION = "0.5.0"
+BOOT = "/boot"  # root of the boot partition (Recovery + slots) as mounted in a Vu+ kexec slot
 BMNAME = "bootmenu"
 INITRD_NAME = "bootmenu.cpio.gz"
 INITRD_REL = BMNAME + "/" + INITRD_NAME
-SUPPORTED_MODELS = ("vuultimo4k",)
+
+# Only receivers on which the menu has actually been seen to work. Nothing
+# else in the plugin depends on the model - no partition numbers, no fixed
+# paths - so adding one is this line plus someone's test. A receiver that is
+# not here is left alone: the plugin does not appear at all.
+SUPPORTED_MODELS = (
+	"vuultimo4k",   # Vu+ Ultimo 4K
+	"vusolo4k",     # Vu+ Solo 4K
+	"vuduo4kse",    # Vu+ Duo 4K SE
+)
 TIMEOUTS = (3, 5, 7, 10, 15, 20, 30)
 DEFAULT_TIMEOUT = 10
 PAYLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payload")
