@@ -12,12 +12,15 @@ MultiBoot already provides: the `initrd=` option that the 1st stage
 slot exactly once. The menu itself runs from the Recovery, before any image is
 started.
 
-- **Receivers:** Vu+ Ultimo 4K, Solo 4K, Duo 4K SE — the ones it has actually
-  been tried on. The other Vu+ 4K models use the same mechanism and can be
-  added as soon as someone tests them: nothing in the plugin depends on the
-  model, so it is one line in `SUPPORTED_MODELS` plus your test. On anything
-  else the plugin does not appear at all, and writes one line in the debug log
-  with the model string it saw — send me that line and the two commands below.
+- **Tested on:** Vu+ Ultimo 4K, Solo 4K, Duo 4K SE.
+- **Everywhere else:** the plugin appears wherever the boot partition has the
+  layout it needs (`STARTUP`, `STARTUP_RECOVERY`, `STARTUP.cpio.gz`, `zImage`),
+  whatever the make of the receiver — but it says that nobody has tested it
+  there and does nothing until you accept that. **Try it with YELLOW first:**
+  that loads the menu at the next start only and leaves `/boot/STARTUP` alone
+  (see *Trying it on an untested receiver* below). Nothing in the plugin
+  depends on the model, so adding one to the tested list is one line in
+  `SUPPORTED_MODELS` plus your report.
 - **Images:** OpenBH 5.6 and 6.0.x, OpenATV 7.x. Any image with the kexec
   MultiBoot and Python 3.
 - **Requires:** a Recovery image in the boot partition (the stock one), and
@@ -68,6 +71,41 @@ asked for.
 | Default image | the entry highlighted when the menu appears; *Last started image* follows your last choice |
 | Show the Recovery in the menu | whether the Recovery is listed (it stays the fall-back either way) |
 | BLUE | preview of the menu, full screen |
+| YELLOW | load the menu at the next start only, without changing `/boot/STARTUP` |
+
+## Trying it on an untested receiver
+
+The menu uses nothing specific to a model, so it may well work on a receiver
+nobody has tried it on. Finding out costs one boot:
+
+1. Before installing anything, over SSH:
+
+   ```sh
+   mbsm-report          # with the package installed
+   sh mbsm-report.sh    # or from tools/, without installing
+   ```
+
+   It only reads. The last lines say whether the boot partition has the layout
+   the menu works with.
+
+2. Install the package, open the plugin and press **YELLOW** (*Try once*). It
+   writes the menu to `STARTUP_ONCE`, which the kexec stage boots exactly once;
+   `/boot/STARTUP` is not touched. Restart.
+
+3. One of three things happens. The menu appears, you choose an image, and the
+   receiver goes back to starting that image directly — it works. The menu does
+   not appear and the receiver starts as usual — it does not, and nothing was
+   changed. Or you get a black screen: switch off and on again, and the receiver
+   starts as usual, because `STARTUP_ONCE` is consumed by that boot whatever
+   happens.
+
+4. At the next start the plugin says which of the three it was. Send that,
+   plus the output of `mbsm-report` and `/boot/bootmenu/bootmenu.log` if there
+   is one, and the model can go in the tested list.
+
+Make a backup of the slots you care about first, and only go on if you know how
+to reflash your receiver. This is a test: it is not expected to brick anything —
+every failure path starts an image instead — but no one has run it there yet.
 
 ## If something goes wrong
 

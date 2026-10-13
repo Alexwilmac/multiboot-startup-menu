@@ -21,7 +21,21 @@ except ImportError:
 
 
 def is_available():
-	return bool(SystemInfo.get("HasKexecMultiboot")) and MODEL in SUPPORTED_MODELS and BootEnv().is_kexec_layout()
+	"""Whether the plugin shows itself at all.
+
+	What the menu depends on is the layout of the boot partition, not the name
+	of the receiver, so that is what is asked. Up to 0.5.0 the model had to be
+	in SUPPORTED_MODELS as well, which meant that nobody outside the three
+	tested receivers could even try: the plugin simply was not there. Now it
+	appears, says plainly that this receiver has not been tested, and does
+	nothing until the user accepts that - see is_tested()."""
+	return BootEnv().is_kexec_layout()
+
+
+def is_tested():
+	"""Whether this receiver is one of those the menu has been seen to work on.
+	Everything the user is warned about hangs on this."""
+	return MODEL in SUPPORTED_MODELS and bool(SystemInfo.get("HasKexecMultiboot"))
 
 
 def current_slot():
@@ -30,8 +44,10 @@ def current_slot():
 
 
 def menu_enabled():
+	"""Only the permanent state: during a trial (ENABLED=once) nothing else in
+	the image should start behaving differently."""
 	try:
-		return bool(SystemInfo.get("HasKexecMultiboot")) and BootEnv().read_conf().get("ENABLED") == "1"
+		return BootEnv().read_conf().get("ENABLED") == "1"
 	except Exception:
 		return False
 
@@ -336,6 +352,68 @@ def install_patches():
 		print("[MultiBootStartupMenu] cannot patch activateSlot: %s" % err)
 
 
+TRIAL_NOTICES = {
+	"ran": lambda: _("The boot menu was tried once on this receiver and it worked.\n\nYou can now switch it on for good from the plugin: Menu > Standby & Restart > MultiBoot startup menu setup."),
+	"menu": lambda: _("The boot menu was tried once on this receiver: it was loaded, but it could not reach the menu and an image was started instead.\nNothing was changed. Details in /boot/bootmenu/bootmenu.log"),
+	"initrd": lambda: _("The boot menu was tried once on this receiver and it was not loaded at all: this receiver starts its images in a way the menu cannot hook into.\nNothing was changed."),
+}
+
+
+def trial_notice(outcome):
+	maker = TRIAL_NOTICES.get(outcome)
+	if not maker:
+		return None
+	return "%s\n\n%s\n%s" % (maker(), _("If you report this receiver, send a photograph of this line, or the file %s:") % REPORT_FILE, report_line())
+
+
+REPORT_FILE = "/tmp/receiver-model.txt"
+
+
+def write_report_file(path=REPORT_FILE):
+	"""The report as a file, for whoever would rather copy a file than
+	photograph a screen.
+
+	In /tmp because that is the one directory everybody who has ever copied an
+	.ipk to a receiver already knows how to reach. /tmp is emptied at every
+	start, which is why this is written at every start and not only when the
+	plugin is opened: after the reboot of a trial, the file has to be there
+	with the result in it."""
+	try:
+		text = "%s\n\n%s\n" % (report_line(), report())
+		with open(path, "w") as f:
+			f.write(text)
+		return path
+	except OSError as err:
+		print("[MultiBootStartupMenu] %s: %s" % (path, err))
+		return None
+
+
+def report_line():
+	"""Everything a report needs, on one line, so that a photograph of the
+	screen is a complete report.
+
+	Most people who install a plugin never open a terminal, and the one thing
+	that cannot be guessed from what the screen usually shows is the model
+	string: the receiver is called 'Vu+ Duo4K SE' on screen and 'vuduo4kse' in
+	the code, and it is the second one that has to go in SUPPORTED_MODELS.
+	Left untranslated on purpose: it is meant to be copied or read back, not
+	read."""
+	try:
+		env = BootEnv()
+		parts = [
+			MODEL or "?",
+			image_version(),
+			"boot " + ("OK" if env.is_kexec_layout() else "NO"),
+			"tested" if is_tested() else "untested",
+		]
+		trial = env.read_conf().get("TRIAL")
+		if trial:
+			parts.append("trial " + trial)
+		return "MBSM %s | %s" % (VERSION, " | ".join(parts))
+	except Exception as err:
+		return "MBSM %s | %s | %s" % (VERSION, MODEL or "?", err)
+
+
 def pending_notice():
 	"""Text to show once about a problem of the menu stage, or None."""
 	env = BootEnv()
@@ -357,33 +435,88 @@ def pending_notice():
 
 def why_not_available():
 	"""One line in the log when the plugin keeps out of the way, so that a
-	user on an untested receiver can report the exact model string instead of
-	just 'it does not appear'."""
+	user can report what was actually missing instead of just 'it does not
+	appear'."""
 	try:
-		return "model=%r in the tested list=%s, kexec multiboot=%s, boot layout=%s" % (
-			MODEL, MODEL in SUPPORTED_MODELS, bool(SystemInfo.get("HasKexecMultiboot")), BootEnv().is_kexec_layout())
+		env = BootEnv()
+		missing = [n for n in ("STARTUP", "STARTUP_RECOVERY", "STARTUP.cpio.gz", "zImage") if not os.path.isfile(env.path(n))]
+		return "model=%r, kexec multiboot=%s, missing in %s: %s" % (
+			MODEL, bool(SystemInfo.get("HasKexecMultiboot")), env.boot, ", ".join(missing) or "nothing")
 	except Exception as err:
 		return "could not be determined: %s" % err
+
+
+def report():
+	"""The facts a tester on an untested receiver has to send back. Deliberately
+	plain text and no judgement: what is here is what was read."""
+	env = BootEnv()
+	conf = env.read_conf()
+	lines = [
+		"MultiBootStartupMenu %s" % VERSION,
+		"model: %s (%s)" % (MODEL, model_name()),
+		"tested receiver: %s" % ("yes" if is_tested() else "NO"),
+		"image: %s" % image_version(),
+		"HasKexecMultiboot: %s" % SystemInfo.get("HasKexecMultiboot"),
+		"MultiBootSlot: %s" % SystemInfo.get("MultiBootSlot"),
+		"canMultiBoot: %s" % sorted(k for k in (SystemInfo.get("canMultiBoot") or {}) if isinstance(k, int)),
+		"boot layout complete: %s" % env.is_kexec_layout(),
+		"Recovery problems (strict): %s" % ("; ".join(env.recovery_problems(True)) or "none"),
+		"Recovery problems (minimum): %s" % ("; ".join(env.recovery_problems(False)) or "none"),
+		"Vu+ drivers in the Recovery: %s" % env.has_vuplus_drivers(),
+		"STARTUP_n files: %s" % env.startup_slots(),
+		"state: ENABLED=%s TRIAL=%s UNTESTED=%s" % (conf.get("ENABLED"), conf.get("TRIAL"), conf.get("UNTESTED")),
+		"last menu run: %s" % (env.status() or "never"),
+	]
+	for name in ("STARTUP", "STARTUP_RECOVERY"):
+		try:
+			lines.append("%s: %s" % (name, env.read_text(name).strip()))
+		except OSError as err:
+			lines.append("%s: %s" % (name, err))
+	try:
+		import PIL
+		lines.append("PIL: %s" % getattr(PIL, "__version__", "present"))
+	except ImportError:
+		lines.append("PIL: MISSING")
+	return "\n".join(lines)
+
+
+def image_version():
+	for path, key in (("/etc/os-release", "PRETTY_NAME="), ("/etc/image-version", "version=")):
+		try:
+			with open(path) as f:
+				for line in f:
+					if line.startswith(key):
+						return line[len(key):].strip().strip('"')
+		except OSError:
+			continue
+	return "unknown"
 
 
 def on_session_start(session):
 	if not is_available():
 		print("[MultiBootStartupMenu] not active here: %s" % why_not_available())
 		return
+	if not is_tested():
+		print("[MultiBootStartupMenu] untested receiver, the menu stays off until it is accepted: %s" % why_not_available())
 	install_patches()
 	env = BootEnv()
+	trial = env.read_conf().get("ENABLED") == "once"
 	try:
 		action = env.on_session_start(current_slot())
 		if action:
 			print("[MultiBootStartupMenu] STARTUP %s" % action)
 	except (OSError, BootMenuError) as err:
 		print("[MultiBootStartupMenu] session start: %s" % err)
+	# after the trial has been settled, so that the file carries its result
+	write_report_file()
 	try:
-		notice = pending_notice()
+		from Screens.MessageBox import MessageBox
+		from Tools import Notifications
+		notice = trial_notice(env.read_conf().get("TRIAL")) if trial else pending_notice()
+		if trial:
+			print("[MultiBootStartupMenu] trial report\n%s" % report())
 		if notice:
-			from Screens.MessageBox import MessageBox
-			from Tools import Notifications
-			Notifications.AddNotification(MessageBox, notice, MessageBox.TYPE_WARNING, timeout=30)
+			Notifications.AddNotification(MessageBox, notice, MessageBox.TYPE_INFO if trial else MessageBox.TYPE_WARNING, timeout=60)
 	except Exception as err:
 		print("[MultiBootStartupMenu] notice: %s" % err)
 	if env.read_conf().get("ENABLED") == "1":

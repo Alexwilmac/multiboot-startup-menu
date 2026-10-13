@@ -2,6 +2,99 @@
 
 All the versions before 0.4.0 were called KexecBootMenu and were not published.
 
+Version numbers: the third digit for fixes that change nothing the user sees
+or has to know, the second one as soon as a behaviour changes or something is
+added - a setting, a key, a receiver. The first stays at 0 until the whole
+thing is worth calling finished. A number never means two different things:
+any change to what goes into the package raises it, however small, and the
+build refuses to overwrite a package of the same version built from different
+sources.
+
+## 0.7.1
+
+The same report as a file, `/tmp/receiver-model.txt`, for whoever would
+rather copy a file than photograph a screen. `/tmp` because it is the one
+directory everybody who has ever copied an .ipk to a receiver already knows
+how to reach. The one line comes first, the detail after it.
+
+It is written at every start of the GUI, not only when the plugin is opened:
+`/tmp` is emptied at every boot, and after the reboot of a trial the file has
+to be there with the result of that trial in it. The screen now names the
+file beside the line.
+
+## 0.7.0
+
+For people who install a plugin and never open a terminal, which is most
+people. Everything a report needs is now on one line on the screen, so that a
+photograph of it is a complete report:
+
+    MBSM 0.7.0 | vuduo4kse | OpenBH 6.0.003 | boot OK | untested | trial ran
+
+It carries the model string, which is the one thing that cannot be guessed
+from what the screen otherwise shows: the receiver is called "Vu+ Duo4K SE"
+there and `vuduo4kse` in the code, and it is the second one that has to go in
+`SUPPORTED_MODELS`. The line appears in the setup screen and again in the
+message that reports the result of a trial, with one sentence asking for the
+photograph. It is left untranslated on purpose: it is meant to be read back,
+not read.
+
+## 0.6.1
+
+Two fixes to 0.6.0, both found before anyone had run it.
+
+**The trial is refused where the menu already starts at every boot.** A trial
+ends by setting `ENABLED` back to 0. With `/boot/STARTUP` already pointing at
+the menu, the wrapper would then refuse to run and hand over to the original
+2nd stage, which boots what the menu line names - `rootsubdir=linuxrootfs0`,
+the Recovery - at every start until someone fixed `/boot/STARTUP` by hand.
+There was nothing to find out in that state anyway: a menu that starts at
+every boot has already answered the question.
+
+**The reason is written in the log again on a receiver where the plugin does
+not appear.** 0.6.0 moved the decision into `Plugins()` and returned an empty
+list, which also stopped the session-start hook from ever being registered -
+and that hook was what wrote the line. On the one receiver where that line is
+the only thing there is to report, nothing was written at all. It is now
+written where the decision is taken.
+
+## 0.6.0
+
+A test version, meant to be tried on receivers nobody has tried it on yet.
+
+Up to 0.5.0 the list of tested models decided whether the plugin existed at
+all: on anything else it did not appear, so nobody outside those three
+receivers could even find out whether it works. Now what decides is the
+layout of the boot partition - STARTUP, STARTUP_RECOVERY, STARTUP.cpio.gz
+and zImage, which is what the menu actually depends on. Where that layout is
+there, the plugin appears, says plainly that this receiver has not been
+tested, and does nothing at all until the user says yes to an entry that is
+set to no. Where it is not there, the plugin stays away as before. The
+tested list is now only what the warning hangs on.
+
+**Try once (YELLOW).** The new way to find out, and the one to use first:
+it writes the menu to `STARTUP_ONCE` instead of `STARTUP`, so the menu is
+loaded at the next start and at that one only. `/boot/STARTUP` is not
+touched. If the menu appears, it starts the chosen image and the receiver
+goes back to exactly what it did before; if it does not appear, the receiver
+starts as usual. Either way the plugin reports at the next start what the
+trial proved - that the menu ran, that it was loaded but could not reach the
+menu, or that the receiver ignored it altogether - which is the one fact a
+new model has to establish.
+
+The check for the Vu+ drivers in the Recovery is now a warning instead of a
+refusal on receivers outside the tested list: another brand brings its
+framebuffer up its own way. If it does not come up, the menu stage gives up
+by itself and the fail-safe starts an image, as it always did.
+
+A trial is refused where the menu already starts at every boot: there would
+be nothing to find out, and ending it would set `ENABLED` back to 0 while
+`/boot/STARTUP` still pointed at the menu, which boots the Recovery.
+
+**`mbsm-report`**, a new command installed with the package: it only reads,
+and prints everything about the receiver that a report has to contain -
+model, image, what is in the boot partition, what the menu needs and whether
+it is there. It can be run before installing anything.
+
 ## 0.5.0
 
 Also runs on the Vu+ Solo 4K and Duo 4K SE, reported working by a forum

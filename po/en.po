@@ -15,11 +15,20 @@ msgstr "%d seconds"
 msgid "Adds the Recovery image (slot 0) as the first entry of the list, and lets you choose it as the default image.\nFound: %s"
 msgstr "Adds the Recovery image (slot 0) as the first entry of the list, and lets you choose it as the default image.\nFound: %s"
 
+msgid "At the last trial the menu was loaded but could not appear, and an image was started instead. See /boot/bootmenu/bootmenu.log"
+msgstr "At the last trial the menu was loaded but could not appear, and an image was started instead. See /boot/bootmenu/bootmenu.log"
+
+msgid "At the last trial the menu was not loaded at all: this receiver ignores the way the menu is started."
+msgstr "At the last trial the menu was not loaded at all: this receiver ignores the way the menu is started."
+
 msgid "Auto start in"
 msgstr "Auto start in"
 
 msgid "Automatic start after"
 msgstr "Automatic start after"
+
+msgid "Before switching it on for good, use YELLOW: it loads the menu at the next start only, without changing anything permanently. If it does not work, the receiver starts as usual and nothing is left behind."
+msgstr "Before switching it on for good, use YELLOW: it loads the menu at the next start only, without changing anything permanently. If it does not work, the receiver starts as usual and nothing is left behind."
 
 msgid "Choose the image to start"
 msgstr "Choose the image to start"
@@ -39,11 +48,20 @@ msgstr "Direct start"
 msgid "If no key is pressed, the highlighted image starts automatically after this time."
 msgstr "If no key is pressed, the highlighted image starts automatically after this time."
 
+msgid "If you report this receiver, send a photograph of this line, or the file %s:"
+msgstr "If you report this receiver, send a photograph of this line, or the file %s:"
+
 msgid "Last started image"
 msgstr "Last started image"
 
 msgid "Leave the boot menu settings?"
 msgstr "Leave the boot menu settings?"
+
+msgid "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual and nothing has changed."
+msgstr "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual and nothing has changed."
+
+msgid "Make a backup of the slots you care about first, and only go on if you know how to reflash this receiver."
+msgstr "Make a backup of the slots you care about first, and only go on if you know how to reflash this receiver."
 
 msgid "MultiBoot startup menu setup"
 msgstr "MultiBoot startup menu setup"
@@ -60,11 +78,17 @@ msgstr "Preparing the boot menu, please wait..."
 msgid "Preparing the preview, please wait..."
 msgstr "Preparing the preview, please wait..."
 
+msgid "Preparing the trial, please wait..."
+msgstr "Preparing the trial, please wait..."
+
 msgid "Press OK to start the highlighted image"
 msgstr "Press OK to start the highlighted image"
 
 msgid "Preview"
 msgstr "Preview"
+
+msgid "Ready. The boot menu will appear at the next start of the receiver, once.\n\nRestart now?"
+msgstr "Ready. The boot menu will appear at the next start of the receiver, once.\n\nRestart now?"
 
 msgid "Recovery"
 msgstr "Recovery"
@@ -90,8 +114,14 @@ msgstr "Start"
 msgid "Starting %s…"
 msgstr "Starting %s…"
 
+msgid "The MultiBoot layout this menu needs was not found in the boot partition."
+msgstr "The MultiBoot layout this menu needs was not found in the boot partition."
+
 msgid "The Python imaging library (PIL) is missing."
 msgstr "The Python imaging library (PIL) is missing."
+
+msgid "The boot menu already starts at every power-on, so there is nothing to try.\n\nSwitch it off and save first if you want to test it again."
+msgstr "The boot menu already starts at every power-on, so there is nothing to try.\n\nSwitch it off and save first if you want to test it again."
 
 msgid "The boot menu could not be disabled:\n%s"
 msgstr "The boot menu could not be disabled:\n%s"
@@ -111,6 +141,9 @@ msgstr "The boot menu did not answer in time. Look at the log for details."
 msgid "The boot menu has been disabled: the receiver will start slot %d directly."
 msgstr "The boot menu has been disabled: the receiver will start slot %d directly."
 
+msgid "The boot menu has not been tested on this receiver (%s). It uses nothing specific to a model, so it may well work, but nobody has seen it do so yet."
+msgstr "The boot menu has not been tested on this receiver (%s). It uses nothing specific to a model, so it may well work, but nobody has seen it do so yet."
+
 msgid "The boot menu is active and will appear at the next start of the receiver.\n\nRestart now to try it?"
 msgstr "The boot menu is active and will appear at the next start of the receiver.\n\nRestart now to try it?"
 
@@ -120,20 +153,41 @@ msgstr "The boot menu never started since it was activated and STARTUP was chang
 msgid "The boot menu was skipped at the last boot and the Recovery was started.\nDetails in /boot/bootmenu/status and bootmenu.log"
 msgstr "The boot menu was skipped at the last boot and the Recovery was started.\nDetails in /boot/bootmenu/status and bootmenu.log"
 
+msgid "The boot menu was tried once on this receiver and it was not loaded at all: this receiver starts its images in a way the menu cannot hook into.\nNothing was changed."
+msgstr "The boot menu was tried once on this receiver and it was not loaded at all: this receiver starts its images in a way the menu cannot hook into.\nNothing was changed."
+
+msgid "The boot menu was tried once on this receiver and it worked.\n\nYou can now switch it on for good from the plugin: Menu > Standby & Restart > MultiBoot startup menu setup."
+msgstr "The boot menu was tried once on this receiver and it worked.\n\nYou can now switch it on for good from the plugin: Menu > Standby & Restart > MultiBoot startup menu setup."
+
+msgid "The boot menu was tried once on this receiver: it was loaded, but it could not reach the menu and an image was started instead.\nNothing was changed. Details in /boot/bootmenu/bootmenu.log"
+msgstr "The boot menu was tried once on this receiver: it was loaded, but it could not reach the menu and an image was started instead.\nNothing was changed. Details in /boot/bootmenu/bootmenu.log"
+
 msgid "The changes have not been saved.\nLeave anyway?"
 msgstr "The changes have not been saved.\nLeave anyway?"
 
 msgid "The image highlighted when the menu appears. 'Last started image' follows your last choice."
 msgstr "The image highlighted when the menu appears. 'Last started image' follows your last choice."
 
+msgid "The last trial worked: the menu appeared and started the image you chose."
+msgstr "The last trial worked: the menu appeared and started the image you chose."
+
 msgid "The preview could not be shown:\n%s"
 msgstr "The preview could not be shown:\n%s"
+
+msgid "The trial could not be prepared:\n%s"
+msgstr "The trial could not be prepared:\n%s"
 
 msgid "This image cannot be started (missing or incomplete)"
 msgstr "This image cannot be started (missing or incomplete)"
 
-msgid "This receiver is not supported by this version of the boot menu."
-msgstr "This receiver is not supported by this version of the boot menu."
+msgid "This receiver has not been tested — accept"
+msgstr "This receiver has not been tested — accept"
+
+msgid "This receiver has not been tested.\n\nSet the first entry to yes to accept that, or press YELLOW to try the menu once without changing anything."
+msgstr "This receiver has not been tested.\n\nSet the first entry to yes to accept that, or press YELLOW to try the menu once without changing anything."
+
+msgid "Try once"
+msgstr "Try once"
 
 msgid "VU+ MULTIBOOT"
 msgstr "VU+ MULTIBOOT"
@@ -149,6 +203,9 @@ msgstr "active (STARTUP changed by another image: it will be restored)"
 
 msgid "not active"
 msgstr "not active"
+
+msgid "not active — a single trial is waiting for the next start"
+msgstr "not active — a single trial is waiting for the next start"
 
 msgid "s"
 msgstr "s"

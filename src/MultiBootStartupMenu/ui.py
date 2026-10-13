@@ -37,8 +37,9 @@ from Screens.Standby import QUIT_REBOOT, TryQuitMainloop
 
 from . import _
 from .core import TIMEOUTS, DEFAULT_TIMEOUT, BootEnv, BootMenuError
-from .glue import (collect_entries, current_slot, default_index, is_available, menu_strings,
-	model_name, output_settings, render_frames, render_preview, run_in_thread)
+from .glue import (REPORT_FILE, collect_entries, current_slot, default_index, is_available,
+	is_tested, menu_strings, model_name, output_settings, render_frames, render_preview,
+	report_line, run_in_thread, write_report_file)
 
 PREVIEW = "/tmp/multibootstartupmenu_preview.png"
 OPEN_RETRY = 50      # ms between two attempts to open a dialog
@@ -216,6 +217,7 @@ class MultiBootStartupMenuSetup(Setup):
 		self.env = BootEnv()
 		self.conf = self.env.read_conf()
 		self.available = is_available()
+		self.tested = is_tested()
 		self.entries = []
 		self.entriesError = None
 		self.waitBox = None
@@ -234,6 +236,7 @@ class MultiBootStartupMenuSetup(Setup):
 			timeout = DEFAULT_TIMEOUT
 		timeout = min(TIMEOUTS, key=lambda t: abs(t - timeout))
 		self.cfgEnabled = NoSave(ConfigYesNo(default=self.conf.get("ENABLED") == "1"))
+		self.cfgUntested = NoSave(ConfigYesNo(default=self.conf.get("UNTESTED") == "1"))
 		self.cfgTimeout = NoSave(ConfigSelection(default=str(timeout), choices=[(str(t), _("%d seconds") % t) for t in TIMEOUTS]))
 		self.cfgRecovery = NoSave(ConfigYesNo(default=self.conf.get("SHOWRECOVERY", "1") == "1"))
 		defaults = self.defaultChoices()
@@ -245,20 +248,33 @@ class MultiBootStartupMenuSetup(Setup):
 		self.setTitle(_("MultiBoot startup menu setup"))
 		# The preview is bound here rather than through the yellow_button
 		# argument of Setup, which not every image honours.
-		self["mbsmColorActions"] = ActionMap(["ColorActions"], {"blue": self.keyPreview}, -1)
-		try:
-			if "key_blue" not in self:
-				from Components.Sources.StaticText import StaticText
-				self["key_blue"] = StaticText(_("Preview"))
-			elif hasattr(self["key_blue"], "setText"):
-				self["key_blue"].setText(_("Preview"))
-		except Exception as err:
-			log("key_blue: %s" % err)
+		self["mbsmColorActions"] = ActionMap(["ColorActions"], {"blue": self.keyPreview, "yellow": self.keyTryOnce}, -1)
+		self.setKeyText("key_blue", _("Preview"))
+		self.setKeyText("key_yellow", _("Try once"))
 		self.openTimer = eTimer()
 		self.openTimer.callback.append(self.tryOpen)
 		self.watchdog = eTimer()
 		self.watchdog.callback.append(self.jobTimeout)
 		self.onClose.append(self.cleanUp)
+		self.writeReport()
+
+	def writeReport(self):
+		"""The facts about this receiver, in the debug log and in a file, so a
+		tester has something to send back without hunting for it."""
+		log("report: %s" % report_line())
+		write_report_file()
+
+	def setKeyText(self, name, text):
+		"""Label of a colour key: the widget exists in most skins, and where it
+		does not it is added, so the key is never there without a name on it."""
+		try:
+			if name not in self:
+				from Components.Sources.StaticText import StaticText
+				self[name] = StaticText(text)
+			elif hasattr(self[name], "setText"):
+				self[name].setText(text)
+		except Exception as err:
+			log("%s: %s" % (name, err))
 
 	def cleanUp(self):
 		for timer in (self.openTimer, self.watchdog):
@@ -299,7 +315,10 @@ class MultiBootStartupMenuSetup(Setup):
 		return _("No Recovery image was found in the boot partition (STARTUP_RECOVERY or the image itself is missing), so it cannot be added to the menu.")
 
 	def createSetup(self, *args, **kwargs):
-		items = [(_("Show the boot menu at startup"), self.cfgEnabled, self.stateText())]
+		items = []
+		if not self.tested:
+			items.append((_("This receiver has not been tested — accept"), self.cfgUntested, self.untestedText()))
+		items.append((_("Show the boot menu at startup"), self.cfgEnabled, self.stateText()))
 		if self.cfgEnabled.value:
 			self.updateDefaultChoices()
 			items.append((_("Automatic start after"), self.cfgTimeout, _("If no key is pressed, the highlighted image starts automatically after this time.")))
@@ -308,15 +327,41 @@ class MultiBootStartupMenuSetup(Setup):
 		self.list = items
 		self["config"].list = items
 
+	def untestedText(self):
+		return "%s\n\n%s\n\n%s\n\n%s" % (
+			_("The boot menu has not been tested on this receiver (%s). It uses nothing specific to a model, so it may well work, but nobody has seen it do so yet.") % (model_name() or "?"),
+			_("Before switching it on for good, use YELLOW: it loads the menu at the next start only, without changing anything permanently. If it does not work, the receiver starts as usual and nothing is left behind."),
+			_("Make a backup of the slots you care about first, and only go on if you know how to reflash this receiver."),
+			self.reportLine())
+
+	def reportLine(self):
+		"""The one line a photograph of this screen has to carry."""
+		return "%s\n%s" % (_("If you report this receiver, send a photograph of this line, or the file %s:") % REPORT_FILE, report_line())
+
 	def stateText(self):
 		text = _("When enabled, the receiver shows the list of the MultiBoot slots at every start and lets you choose with the remote control.")
 		if not self.available:
-			return _("This receiver is not supported by this version of the boot menu.")
+			return _("The MultiBoot layout this menu needs was not found in the boot partition.")
 		if self.conf.get("ENABLED") == "1":
 			state = _("active") if self.env.startup_is_menu() else _("active (STARTUP changed by another image: it will be restored)")
+		elif self.conf.get("ENABLED") == "once":
+			state = _("not active — a single trial is waiting for the next start")
 		else:
 			state = _("not active")
-		return "%s\n%s" % (text, _("Current state: %s") % state)
+		lines = [text, _("Current state: %s") % state]
+		trial = self.trialText()
+		if trial:
+			lines.append(trial)
+		lines.append("")
+		lines.append(self.reportLine())
+		return "\n".join(lines)
+
+	def trialText(self):
+		return {
+			"ran": _("The last trial worked: the menu appeared and started the image you chose."),
+			"menu": _("At the last trial the menu was loaded but could not appear, and an image was started instead. See /boot/bootmenu/bootmenu.log"),
+			"initrd": _("At the last trial the menu was not loaded at all: this receiver ignores the way the menu is started."),
+		}.get(self.conf.get("TRIAL"))
 
 	# ------------------------------------------------------------------
 	# opening dialogs
@@ -392,11 +437,16 @@ class MultiBootStartupMenuSetup(Setup):
 			"TIMEOUT": self.cfgTimeout.value,
 			"DEFAULT": self.cfgDefault.value,
 			"SHOWRECOVERY": "1" if self.cfgRecovery.value else "0",
+			"MODEL": model_name(),
+			"UNTESTED": "0" if self.tested else "1",
 		}
 
-	def checkReady(self):
+	def checkReady(self, accept=True):
 		if not self.available:
-			self.error(_("This receiver is not supported by this version of the boot menu."))
+			self.error(_("The MultiBoot layout this menu needs was not found in the boot partition."))
+			return None
+		if accept and not self.tested and not self.cfgUntested.value:
+			self.error(_("This receiver has not been tested.\n\nSet the first entry to yes to accept that, or press YELLOW to try the menu once without changing anything."))
 			return None
 		entries = self.menuEntries()
 		if not [e for e in entries if e["slot"] >= 1]:
@@ -428,9 +478,11 @@ class MultiBootStartupMenuSetup(Setup):
 			strings = menu_strings()
 			model = model_name()
 
+			strict = self.tested
+
 			def job():
 				render_frames(env, entries, timeout, strings, model)
-				return env.enable(settings)
+				return env.enable(settings, strict)
 
 			self.showWait(_("Preparing the boot menu, please wait..."))
 			run_in_thread(job, self.enableReady)
@@ -511,11 +563,68 @@ class MultiBootStartupMenuSetup(Setup):
 			self.close()
 
 	# ------------------------------------------------------------------
-	# YELLOW: preview
+	# YELLOW: load the menu at the next start only
+	#
+	# STARTUP_ONCE is what the Vu+ kexec stage boots when it is there, once;
+	# STARTUP is not touched at all. So a trial that does not work costs one
+	# boot and leaves the receiver exactly as it was - which is the only
+	# honest way to try the menu on a receiver nobody has tested.
+	def keyTryOnce(self):
+		if self.busy:
+			return
+		if self.conf.get("ENABLED") == "1" or self.env.startup_is_menu():
+			self.error(_("The boot menu already starts at every power-on, so there is nothing to try.\n\nSwitch it off and save first if you want to test it again."))
+			return
+		entries = self.checkReady(accept=False)
+		if entries is None:
+			return
+		self.openLater(MessageBox, _(
+			"Load the boot menu at the next start only?\n\n"
+			"/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\n"
+			"If the menu does not appear, the receiver starts as usual and nothing has changed."),
+			MessageBox.TYPE_YESNO, default=False, callback=self.tryOnceAnswer)
+
+	def tryOnceAnswer(self, answer):
+		if not answer:
+			return
+		entries = self.checkReady(accept=False)
+		if entries is None:
+			return
+		settings = self.settings()
+		settings.update(output_settings())
+		slot = current_slot()
+		if slot and slot >= 1:
+			settings["LAST"] = str(slot)
+		env = self.env
+		timeout = int(self.cfgTimeout.value)
+		strings = menu_strings()
+		model = model_name()
+		strict = self.tested
+
+		def job():
+			render_frames(env, entries, timeout, strings, model)
+			return env.try_once(settings, strict)
+
+		self.showWait(_("Preparing the trial, please wait..."))
+		run_in_thread(job, self.tryOnceReady)
+
+	def tryOnceReady(self, result, error):
+		self.hideWait()
+		if error:
+			self.error(_("The trial could not be prepared:\n%s") % error)
+			return
+		self.conf = self.env.read_conf()
+		self.saved = True
+		self.openLater(MessageBox, _(
+			"Ready. The boot menu will appear at the next start of the receiver, once.\n\n"
+			"Restart now?"), MessageBox.TYPE_YESNO, default=False, callback=self.rebootAnswer)
+
+	# ------------------------------------------------------------------
+	# BLUE: preview
 	def keyPreview(self):
 		if self.busy:
 			return
-		entries = self.checkReady()
+		entries = self.checkReady(accept=False)
 		if entries is None:
 			return
 		index = default_index(entries, self.cfgDefault.value, current_slot() or self.conf.get("LAST"))

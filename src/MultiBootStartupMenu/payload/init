@@ -73,7 +73,9 @@ fi
 
 [ -f $BM/menu-init ] || fallback "menu-init missing"
 [ -x /newroot/bin/sh ] || [ -L /newroot/bin/sh ] || fallback "Recovery /bin/sh missing"
-grep -q '^ENABLED=1' $BM/bootmenu.conf 2>/dev/null || fallback "boot menu disabled"
+# ENABLED=1 permanently, ENABLED=once for a single trial boot started from
+# STARTUP_ONCE (STARTUP itself was never changed)
+grep -qE '^ENABLED=(1|once)$' $BM/bootmenu.conf 2>/dev/null || fallback "boot menu disabled"
 chmod 755 $BM/menu-init 2>/dev/null
 
 mkdir -p /newroot/dev

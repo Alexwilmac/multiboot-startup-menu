@@ -521,11 +521,23 @@ def test_wrapper(root):
 	check("wrapper: failed previous hand-over -> original stage 2", "STAGE2" in calls and "switch_root" not in calls and read(os.path.join(nr, "status"), "").startswith("WRAPPER_FAILED"), calls)
 	check("wrapper: marker cleared after the fallback", not os.path.exists(os.path.join(nr, ".wrapper_pending")))
 
+	def trial():
+		enabled()
+		fakeboot.write(os.path.join(nr, "bootmenu.conf"), "ENABLED=once\n")
+	calls = run(trial)
+	check("wrapper: a single trial (ENABLED=once) is loaded like the real thing", "switch_root /newroot /bootmenu/menu-init" in calls and "STAGE2" not in calls, calls)
+
 	def disabled():
 		enabled()
 		fakeboot.write(os.path.join(nr, "bootmenu.conf"), "ENABLED=0\n")
 	calls = run(disabled)
 	check("wrapper: disabled -> original stage 2", "STAGE2" in calls and "switch_root" not in calls, calls)
+
+	def half():
+		enabled()
+		fakeboot.write(os.path.join(nr, "bootmenu.conf"), "ENABLED=onceupon\n")
+	calls = run(half)
+	check("wrapper: only the exact words 1 and once count", "STAGE2" in calls and "switch_root" not in calls, calls)
 
 	def missing():
 		enabled()
@@ -607,8 +619,10 @@ def test_dialogs(root):
 	helptext = [item[2] for item in screen5.list if item[1] is screen5.cfgRecovery][0]
 	check("default image: the help says which Recovery was found", "OpenBh" in helptext or "Recovery" in helptext, helptext)
 	colors = screen5["mbsmColorActions"]
-	check("preview: bound to blue only", colors.actions == {"blue": screen5.keyPreview}, sorted(colors.actions))
+	check("colour keys: blue = preview, yellow = try once, nothing else",
+		colors.actions == {"blue": screen5.keyPreview, "yellow": screen5.keyTryOnce}, sorted(colors.actions))
 	check("preview: the blue button is labelled", screen5["key_blue"].text == "Preview", screen5["key_blue"].text)
+	check("try once: the yellow button is labelled", screen5["key_yellow"].text == "Try once", screen5["key_yellow"].text)
 
 	# preview: opened, not queued
 	import Tools.LoadPixmap as lp
@@ -677,11 +691,165 @@ def test_fallback(root):
 	check("frames: the 'starting the Recovery' footer is rendered too", os.path.isfile(os.path.join(folder, "boot_recovery.bmf")))
 
 
+# ---------------------------------------------------------------------------
+def test_untested_receiver(root):
+	"""A receiver nobody has tested: the plugin shows itself and says so, but
+	does nothing until the user accepts it - and offers the trial instead."""
+	from MultiBootStartupMenu import core as c, glue
+	from MultiBootStartupMenu.ui import MultiBootStartupMenuSetup
+	import Components.SystemInfo as si
+
+	fakeboot.build(root)
+	plugin_env(root)
+	original = read(os.path.join(root, "STARTUP"))
+	real_model = si.MODEL
+	si.MODEL = glue.MODEL = "zgemmah9combo"  # anything outside SUPPORTED_MODELS
+	try:
+		check("untested: the plugin is still available (the boot layout is what counts)", glue.is_available())
+		check("untested: but it is not a tested receiver", not glue.is_tested())
+
+		session = FakeSession()
+		screen = session.open(MultiBootStartupMenuSetup)
+		check("untested: an extra 'accept' entry comes first", len(screen.list) == 2 and screen.list[0][1] is screen.cfgUntested, len(screen.list))
+		check("untested: the warning names the receiver and the trial", "not been tested" in screen.list[0][2] and "YELLOW" in screen.list[0][2])
+		check("untested: the warning carries the line to photograph, with the model string",
+			"photograph" in screen.list[0][2] and "zgemmah9combo" in screen.list[0][2] and "untested" in screen.list[0][2], screen.list[0][2])
+
+		screen.cfgEnabled.value = True
+		screen.cfgTimeout.value = "3"
+		screen.createSetup()
+		screen.keySave()
+		enigma.run_timers()
+		texts = [entry[1][0] for entry in session.log if entry[0] == "MessageBox"]
+		check("untested: GREEN refuses until it is accepted", texts and "has not been tested" in texts[-1], texts)
+		check("untested: nothing was changed", read(os.path.join(root, "STARTUP")) == original and conf_of(root)["ENABLED"] == "0")
+
+		# the trial: STARTUP_ONCE only
+		screen.keyTryOnce()
+		enigma.run_timers()
+		screen.tryOnceAnswer(True)
+		enigma.run_timers()
+		conf = conf_of(root)
+		once = read(os.path.join(root, "STARTUP_ONCE"), "")
+		check("try once: STARTUP is not touched", read(os.path.join(root, "STARTUP")) == original, read(os.path.join(root, "STARTUP")))
+		check("try once: STARTUP_ONCE is the menu line", once == "kernel=/zImage root=/dev/mmcblk0p4 rootsubdir=linuxrootfs0 initrd=bootmenu/bootmenu.cpio.gz", once)
+		check("try once: ENABLED=once, TRIAL=pending", (conf["ENABLED"], conf["TRIAL"]) == ("once", "pending"), conf)
+		check("try once: the receiver is recorded", conf["UNTESTED"] == "1" and conf["MODEL"], conf["MODEL"])
+		check("try once: the 'never ran yet' marker is set", os.path.exists(os.path.join(root, "bootmenu", ".unverified")))
+		check("try once: the menu is not treated as enabled meanwhile", not glue.menu_enabled())
+
+		env = c.BootEnv(root)
+		bm = os.path.join(root, "bootmenu")
+
+		# 1. the trial never ran: the marker is still there
+		check("trial outcome: marker still there -> the initrd was never loaded", env.trial_outcome() == "initrd")
+		# 2. the wrapper ran but the menu stage gave up
+		os.remove(os.path.join(bm, ".unverified"))
+		fakeboot.write(os.path.join(bm, "status"), "FAILSAFE framebuffer /dev/fb0 did not appear\n")
+		check("trial outcome: loaded but no menu -> 'menu'", env.trial_outcome() == "menu")
+		# 3. it all worked
+		fakeboot.write(os.path.join(bm, "status"), "OK slot 3\n")
+		check("trial outcome: a slot was chosen -> 'ran'", env.trial_outcome() == "ran")
+
+		action = env.on_session_start(3)
+		conf = conf_of(root)
+		check("trial: one boot only, whatever happened", (conf["ENABLED"], conf["TRIAL"]) == ("0", "ran"), conf)
+		check("trial: an unused STARTUP_ONCE is removed", not os.path.exists(os.path.join(root, "STARTUP_ONCE")), action)
+		check("trial: STARTUP was never touched", read(os.path.join(root, "STARTUP")) == original)
+		check("trial: the result is reported to the user", "worked" in (glue.trial_notice("ran") or ""), glue.trial_notice("ran"))
+		check("trial: a receiver that ignored it is told so", "not loaded at all" in (glue.trial_notice("initrd") or ""))
+		# someone who never opens a terminal has to be able to report by
+		# photographing the screen: the line has to carry the model string
+		notice = glue.trial_notice("ran") or ""
+		check("trial: the message carries the line to photograph", "photograph" in notice and glue.report_line() in notice, notice)
+		line = glue.report_line()
+		check("report line: model string, image, layout, tested, trial",
+			line.startswith("MBSM ") and "zgemmah9combo" in line and "boot OK" in line and "untested" in line and "trial ran" in line, line)
+		check("trial: the message also names the file to copy", glue.REPORT_FILE in notice, notice)
+
+		# the same thing as a file, for whoever would rather copy than photograph
+		target = os.path.join(OUT, "receiver-model.txt")
+		written = glue.write_report_file(target)
+		body = read(target, "")
+		check("report file: written where asked", written == target and body)
+		check("report file: the line comes first, the detail after",
+			body.startswith(line) and "model: zgemmah9combo" in body and "Recovery problems" in body, body[:120])
+		check("report file: /tmp/receiver-model.txt by default", glue.REPORT_FILE == "/tmp/receiver-model.txt", glue.REPORT_FILE)
+
+		# a trial on top of a menu that is already permanent would end with
+		# ENABLED=0 and STARTUP still pointing at the menu, i.e. booting the
+		# Recovery at every start: refused, at both levels
+		fakeboot.write(os.path.join(root, "STARTUP"), read(os.path.join(root, "STARTUP_RECOVERY")) + " initrd=bootmenu/bootmenu.cpio.gz")
+		env.update_conf(ENABLED="1")
+		check("try once: refused while the menu is already permanent", env.startup_is_menu())
+		try:
+			env.try_once({})
+			refused = False
+		except c.BootMenuError as err:
+			refused = "nothing to try" in str(err)
+		check("try once: core refuses it", refused)
+		session = FakeSession()
+		screen = session.open(MultiBootStartupMenuSetup)
+		screen.keyTryOnce()
+		enigma.run_timers()
+		texts = [entry[1][0] for entry in session.log if entry[0] == "MessageBox"]
+		check("try once: the screen says why instead", texts and "nothing to try" in texts[-1], texts)
+		check("try once: no trial was left pending", conf_of(root)["ENABLED"] == "1" and not os.path.exists(os.path.join(root, "STARTUP_ONCE")))
+		fakeboot.write(os.path.join(root, "STARTUP"), original)
+		env.update_conf(ENABLED="0")
+
+		# accepting makes GREEN work, without the Vu+ driver check
+		shutil.rmtree(os.path.join(root, "etc"), ignore_errors=True)
+		shutil.rmtree(os.path.join(root, "lib"), ignore_errors=True)
+		check("untested: the Vu+ driver check would stop it", env.recovery_problems(True) and not env.recovery_problems(False))
+		session = FakeSession()
+		screen = session.open(MultiBootStartupMenuSetup)
+		screen.cfgUntested.value = True
+		screen.cfgEnabled.value = True
+		screen.cfgTimeout.value = "3"
+		screen.createSetup()
+		screen.keySave()
+		enigma.run_timers()
+		check("untested: once accepted, GREEN enables the menu", conf_of(root)["ENABLED"] == "1" and c.BootEnv(root).startup_is_menu(), conf_of(root)["ENABLED"])
+		check("untested: the choice is remembered, so it is not asked again", conf_of(root)["UNTESTED"] == "1")
+	finally:
+		si.MODEL = glue.MODEL = real_model
+		core.BOOT = root
+
+	# a tested receiver is left exactly as it was
+	fakeboot.build(root)
+	plugin_env(root)
+	session = FakeSession()
+	screen = session.open(MultiBootStartupMenuSetup)
+	check("tested receiver: no extra entry, nothing to accept", len(screen.list) == 1 and screen.tested)
+
+	# a receiver without the layout: the plugin does not register at all, so
+	# the only thing it can leave behind is the line saying why
+	from MultiBootStartupMenu import plugin
+	import io
+	import contextlib
+	empty = os.path.join(OUT, "noboot")
+	shutil.rmtree(empty, ignore_errors=True)
+	os.makedirs(empty)
+	core.BOOT = empty
+	try:
+		out = io.StringIO()
+		with contextlib.redirect_stdout(out):
+			descriptors = plugin.Plugins()
+		said = out.getvalue()
+		check("no layout: the plugin registers nothing", descriptors == [], descriptors)
+		check("no layout: it still says why, with the model string", "not active here" in said and "model=" in said and "STARTUP" in said, said.strip())
+	finally:
+		core.BOOT = root
+		plugin_env(root)
+
+
 def main():
 	root = os.path.join(OUT, "boot")
 	test_plugin_enable(root)
 	test_menu_stage(root)
 	test_plugin_runtime(root)
+	test_untested_receiver(root)
 	test_wrapper(root)
 	test_dialogs(root)  # last: it rebuilds the fake boot partition
 	test_fallback(root)

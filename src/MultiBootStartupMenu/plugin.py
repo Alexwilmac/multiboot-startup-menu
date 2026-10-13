@@ -33,8 +33,20 @@ def sessionstart(reason, session=None, **kwargs):
 
 
 def Plugins(**kwargs):
+	# The Recovery is where you end up when something goes wrong: the plugin
+	# stays out of it. Everywhere else the decision is is_available(), which
+	# looks at the boot partition rather than at the name of the receiver.
+	#
+	# When the answer is no, nothing else of the plugin will ever run - not
+	# even the session-start hook, which is registered below. So the one line
+	# saying why has to be written here: on a receiver where the plugin does
+	# not appear, it is the only thing there is to report.
 	from Components.SystemInfo import SystemInfo
-	if not SystemInfo.get("HasKexecMultiboot") or SystemInfo.get("MultiBootSlot") == 0:
+	if SystemInfo.get("MultiBootSlot") == 0:
+		return []
+	from .glue import is_available, why_not_available
+	if not is_available():
+		print("[MultiBootStartupMenu] not active here: %s" % why_not_available())
 		return []
 	return [
 		PluginDescriptor(name=_("MultiBoot startup menu setup"), description=_("Choose the image to start at every power-on"), where=PluginDescriptor.WHERE_PLUGINMENU, icon="plugin.png", fnc=main),

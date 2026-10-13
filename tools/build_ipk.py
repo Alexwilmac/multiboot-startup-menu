@@ -21,13 +21,19 @@ PACKAGE = "enigma2-plugin-systemplugins-multibootstartupmenu"
 OLD_PACKAGE = "enigma2-plugin-systemplugins-kexecbootmenu"  # the name used up to 0.3.3
 TARGET = "usr/lib/enigma2/python/Plugins/SystemPlugins/MultiBootStartupMenu"
 EXEC = {"payload/init", "payload/menu-init"}
+# the diagnostic script, installed as a command of its own so that a tester
+# only has to type its name
+REPORT_SRC = os.path.join(HERE, "mbsm-report.sh")
+REPORT_TARGET = "usr/bin/mbsm-report"
 MTIME = int(time.time())
 
 CONTROL = """Package: %s
 Version: %s
-Description: Boot menu for the Vu+ kexec MultiBoot (OpenBH)
- Shows the list of the MultiBoot slots at every start of a Vu+ Ultimo4K
- and boots the one chosen with the remote control.
+Description: Boot menu for the kexec MultiBoot
+ Shows the list of the MultiBoot slots at every start and boots the one
+ chosen with the remote control. Tested on Vu+ Ultimo 4K, Solo 4K and
+ Duo 4K SE; on any other receiver with the same boot layout it says so and
+ asks before doing anything.
 Section: extra
 Priority: optional
 Maintainer: %s
@@ -51,6 +57,11 @@ if opkg list-installed 2>/dev/null | grep -q '^%s '; then
 	echo "          switch it on again from the plugin afterwards)"
 fi
 echo "Restart the GUI, then: Menu > Standby & Restart > MultiBoot startup menu."
+echo
+echo "On a receiver this menu has not been tested on, the plugin says so and does"
+echo "nothing until you accept it. Try YELLOW (Try once) first: it loads the menu"
+echo "at the next start only, without changing /boot/STARTUP."
+echo "The command  mbsm-report  prints everything about this receiver."
 exit 0
 """ % (VERSION, OLD_PACKAGE, OLD_PACKAGE)
 
@@ -58,6 +69,13 @@ PRERM = r"""#!/bin/sh
 # On removal: if the boot menu is active, boot the current slot directly again.
 [ "$1" = "remove" ] || exit 0
 CONF=/boot/bootmenu/bootmenu.conf
+# a trial that has not been used yet: drop it, it would load a menu that is
+# about to be removed
+if grep -q 'initrd=bootmenu/' /boot/STARTUP_ONCE 2>/dev/null; then
+	rm -f /boot/STARTUP_ONCE
+	sed -i 's/^ENABLED=once$/ENABLED=0/' $CONF 2>/dev/null
+	sync
+fi
 grep -q '^ENABLED=1' $CONF 2>/dev/null || exit 0
 grep -q 'initrd=bootmenu/' /boot/STARTUP 2>/dev/null || exit 0
 N=$(sed -n 's/.*rootsubdir=[^ ]*linuxrootfs\([0-9][0-9]*\).*/\1/p' /proc/cmdline | head -n 1)
@@ -120,6 +138,10 @@ def data_tar(tar):
 			with open(path, "rb") as f:
 				data = f.read()
 			add(tar, "./%s/%s" % (TARGET, relname), data, 0o755 if relname in EXEC else 0o644)
+	add_dir(tar, "./usr/bin/")
+	with open(REPORT_SRC, "rb") as f:
+		add(tar, "./" + REPORT_TARGET, f.read(), 0o755)
+	files.append("-> /" + REPORT_TARGET)
 	return files
 
 
@@ -139,17 +161,58 @@ def ar_member(name, data):
 	return out
 
 
+def contents_id(outdir):
+	"""Fingerprint of everything that ends up in the package, so that a
+	rebuild of an unchanged tree is recognised as the same package."""
+	import hashlib
+	digest = hashlib.md5()
+	for root, dirs, names in sorted(os.walk(SRC)):
+		dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+		for name in sorted(names):
+			if name.endswith((".pyc", ".tmp")):
+				continue
+			path = os.path.join(root, name)
+			with open(path, "rb") as f:
+				digest.update(os.path.relpath(path, SRC).encode())
+				digest.update(f.read())
+	for extra in (REPORT_SRC, os.path.abspath(__file__)):
+		with open(extra, "rb") as f:
+			digest.update(f.read())
+	return digest.hexdigest()
+
+
+def check_version_is_free(path, outdir):
+	"""Refuse to build a package that would replace one of the same version
+	with different contents. A version number that has been handed to someone
+	else must mean one thing: once two different builds are both called 0.6.0,
+	no bug report can be placed any more. Bump VERSION in core.py instead."""
+	stamp = os.path.join(outdir, ".%s_%s.id" % (PACKAGE, VERSION))
+	current = contents_id(outdir)
+	if os.path.isfile(path) and os.path.isfile(stamp):
+		with open(stamp) as f:
+			if f.read().strip() != current:
+				raise SystemExit(
+					"%s already exists and was built from different sources.\n"
+					"Raise VERSION in src/MultiBootStartupMenu/core.py and build again:\n"
+					"a version number that has already left this machine must not change meaning."
+					% os.path.basename(path))
+	return stamp, current
+
+
 def main(outdir):
 	import i18n  # compile the catalogues first, so the package never ships a stale one
 	i18n.main()
+	os.makedirs(outdir, exist_ok=True)
+	path = os.path.join(outdir, "%s_%s_all.ipk" % (PACKAGE, VERSION))
+	stamp, current = check_version_is_free(path, outdir)
 	listing = []
 	data = targz(lambda tar: listing.extend(data_tar(tar)))
 	control = targz(control_tar)
 	ipk = b"!<arch>\n" + ar_member("debian-binary", b"2.0\n") + ar_member("control.tar.gz", control) + ar_member("data.tar.gz", data)
-	os.makedirs(outdir, exist_ok=True)
-	path = os.path.join(outdir, "%s_%s_all.ipk" % (PACKAGE, VERSION))
 	with open(path, "wb") as f:
 		f.write(ipk)
+	with open(stamp, "w") as f:
+		f.write(current + "\n")
 	print(path)
 	print("\n".join("  " + x for x in listing))
 	return path

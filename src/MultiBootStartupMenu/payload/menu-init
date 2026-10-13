@@ -125,7 +125,7 @@ fail_and_boot_default() {
 			cp -f "$R/$sf" "$R/STARTUP.tmp" && sync && mv -f "$R/STARTUP.tmp" "$R/STARTUP"
 		fi
 		sync
-		sed -i 's/^ENABLED=1$/ENABLED=0/' $CONF
+		sed -i 's/^ENABLED=1$/ENABLED=0/;s/^ENABLED=once$/ENABLED=0/' $CONF
 		echo "DISABLED $1" > $BM/status
 		sync
 	else

@@ -12,16 +12,21 @@ import os
 import shutil
 import time
 
-VERSION = "0.5.0"
+VERSION = "0.7.1"
 BOOT = "/boot"  # root of the boot partition (Recovery + slots) as mounted in a Vu+ kexec slot
 BMNAME = "bootmenu"
 INITRD_NAME = "bootmenu.cpio.gz"
 INITRD_REL = BMNAME + "/" + INITRD_NAME
 
-# Only receivers on which the menu has actually been seen to work. Nothing
-# else in the plugin depends on the model - no partition numbers, no fixed
-# paths - so adding one is this line plus someone's test. A receiver that is
-# not here is left alone: the plugin does not appear at all.
+# Receivers on which the menu has actually been seen to work. Nothing else in
+# the plugin depends on the model - no partition numbers, no fixed paths - so
+# adding one is this line plus someone's test.
+#
+# Since 0.6.0 this list no longer decides whether the plugin appears: what
+# decides is the layout of the boot partition (is_kexec_layout), which is what
+# the menu really depends on. On a receiver that is not in this list the plugin
+# says so, refuses to do anything until the user explicitly accepts, and offers
+# "try once", which loads the menu for a single boot without touching STARTUP.
 SUPPORTED_MODELS = (
 	"vuultimo4k",   # Vu+ Ultimo 4K
 	"vusolo4k",     # Vu+ Solo 4K
@@ -36,7 +41,11 @@ WRAPPER_MARK = b"MultiBootStartupMenu - initrd wrapper"
 OLD_WRAPPER_MARKS = (b"KexecBootMenu - initrd wrapper",)
 UNVERIFIED = ".unverified"
 
-CONF_KEYS = ("ENABLED", "TIMEOUT", "DEFAULT", "LAST", "SHOWRECOVERY", "VIDEOMODE", "OSD", "ALPHA", "RCCODE", "RCTYPE", "VERSION", "INITRD_MD5", "SOURCE_MD5", "NOTIFIED")
+# ENABLED: "1" permanently (STARTUP points to the menu), "once" for a trial
+# (only STARTUP_ONCE was written, STARTUP is untouched), "0" otherwise.
+ENABLED_OFF, ENABLED_ON, ENABLED_ONCE = "0", "1", "once"
+
+CONF_KEYS = ("ENABLED", "TIMEOUT", "DEFAULT", "LAST", "SHOWRECOVERY", "VIDEOMODE", "OSD", "ALPHA", "RCCODE", "RCTYPE", "VERSION", "INITRD_MD5", "SOURCE_MD5", "NOTIFIED", "MODEL", "UNTESTED", "TRIAL")
 CONF_DEFAULTS = {
 	"ENABLED": "0",
 	"TIMEOUT": str(DEFAULT_TIMEOUT),
@@ -52,6 +61,9 @@ CONF_DEFAULTS = {
 	"INITRD_MD5": "",
 	"SOURCE_MD5": "",
 	"NOTIFIED": "",
+	"MODEL": "",
+	"UNTESTED": "0",
+	"TRIAL": "",
 }
 
 
@@ -332,22 +344,33 @@ class BootEnv:
 			self.update_conf(LAST=int(slot))
 
 	# --- checks -------------------------------------------------------------
-	def recovery_problems(self):
+	def recovery_problems(self, strict=True):
+		"""What would stop the menu stage from running inside the Recovery.
+
+		The missing-file checks are hard everywhere: without a shell and a
+		python3 in the boot partition the menu cannot run at all. The driver
+		check is Vu+ specific, so on a receiver outside the tested list it is
+		only a warning: another brand brings its framebuffer up its own way,
+		and that is one of the things a test is for. If it does not come up,
+		the menu stage gives up by itself and the fail-safe starts an image."""
 		problems = []
 		for rel in ("zImage", "STARTUP.cpio.gz", "STARTUP_RECOVERY", "bin/sh", "usr/bin/python3"):
 			if not self.exists(rel):
 				problems.append("Recovery: %s missing" % rel)
-		platform = self.exists("etc/init.d/vuplus-platform-util")
-		modules = False
+		if strict and not self.has_vuplus_drivers():
+			problems.append("Recovery: Vu+ drivers (vuplus-platform-util) missing")
+		return problems
+
+	def has_vuplus_drivers(self):
+		if self.exists("etc/init.d/vuplus-platform-util"):
+			return True
 		try:
 			for kver in os.listdir(self.path("lib/modules")):
 				if os.path.isfile(self.path("lib/modules", kver, "extra", "brcmfb.ko")):
-					modules = True
+					return True
 		except OSError:
 			pass
-		if not platform and not modules:
-			problems.append("Recovery: Vu+ drivers (vuplus-platform-util) missing")
-		return problems
+		return False
 
 	def installation_problems(self, conf=None):
 		conf = conf or self.read_conf()
@@ -405,23 +428,31 @@ class BootEnv:
 			except OSError:
 				pass
 
-	def enable(self, settings):
-		"""Frames must already be in place. Order matters: nothing points to
-		the menu until every file it needs has been written and verified."""
+	def prepare(self, settings, state, strict=True):
+		"""Everything both enable() and try_once() need: the checks, the files
+		in /boot/bootmenu and the configuration. Nothing here makes the box
+		boot the menu - that is one line in the caller, and it comes last."""
 		if not self.is_kexec_layout():
 			raise BootMenuError("Vu+ kexec multiboot layout not found in %s" % self.boot)
-		problems = self.recovery_problems()
+		problems = self.recovery_problems(strict)
 		if problems:
 			raise BootMenuError("; ".join(problems))
 		self.menu_line()
 		md5 = self.install_payload()
 		conf = self.read_conf()
 		conf.update({k: str(v) for k, v in settings.items()})
-		conf.update({"ENABLED": "1", "VERSION": VERSION, "INITRD_MD5": md5, "SOURCE_MD5": self.source_md5(), "NOTIFIED": ""})
+		conf.update({"ENABLED": state, "VERSION": VERSION, "INITRD_MD5": md5, "SOURCE_MD5": self.source_md5(), "NOTIFIED": ""})
 		problems = self.installation_problems(conf)
 		if problems:
 			raise BootMenuError("; ".join(problems))
 		self.reset_failures()
+		return conf
+
+	def enable(self, settings, strict=True):
+		"""Frames must already be in place. Order matters: nothing points to
+		the menu until every file it needs has been written and verified."""
+		conf = self.prepare(settings, ENABLED_ON, strict)
+		conf["TRIAL"] = ""
 		self.write_conf(conf)
 		if not self.startup_is_menu():
 			shutil.copyfile(self.path("STARTUP"), os.path.join(self.bm, "STARTUP.before"))
@@ -429,13 +460,70 @@ class BootEnv:
 		self.set_startup_menu()
 		return conf
 
+	def try_once(self, settings, strict=True):
+		"""Load the menu at the next boot only, leaving STARTUP alone.
+
+		STARTUP_ONCE is the Vu+ kexec way of booting something exactly once:
+		the 1st stage uses it instead of STARTUP and the 2nd stage of whatever
+		starts next deletes it. So the worst case of a trial is one boot that
+		does not reach the menu, with the box still configured exactly as it
+		was. It is the safe way to find out whether a receiver nobody has
+		tested can load the menu at all.
+
+		Refused when STARTUP already starts the menu. A trial ends by setting
+		ENABLED back to 0, which in that state would leave STARTUP pointing at
+		an initrd the wrapper then refuses to use - and the original 2nd stage
+		would boot what the menu line names, the Recovery. There is nothing to
+		try anyway: a menu that starts at every boot has already answered the
+		question."""
+		if self.startup_is_menu():
+			raise BootMenuError("the boot menu already starts at every boot: there is nothing to try")
+		conf = self.prepare(settings, ENABLED_ONCE, strict)
+		conf["TRIAL"] = "pending"
+		self.write_conf(conf)
+		self.mark_unverified()
+		atomic_write(self.path("STARTUP_ONCE"), self.menu_line())
+		return conf
+
+	def trial_outcome(self):
+		"""What the trial of the previous boot proved, read from the two marks
+		the boot itself leaves behind:
+
+		ran      the menu ran and a slot was chosen - the receiver works
+		menu     the initrd was loaded but the menu stage gave up (see the log)
+		initrd   the initrd was never loaded: STARTUP_ONCE was ignored
+		"""
+		if os.path.exists(os.path.join(self.bm, UNVERIFIED)):
+			return "initrd"
+		return "ran" if self.status().startswith("OK") else "menu"
+
+	def cancel_trial(self):
+		"""Called at the next start, whatever happened: a trial lasts one boot.
+		Also removes a STARTUP_ONCE that was never consumed, so that a trial
+		which did not boot at all cannot be retried by accident."""
+		outcome = self.trial_outcome()
+		try:
+			if ("initrd=" + INITRD_REL) in self.read_text("STARTUP_ONCE").split():
+				os.remove(self.path("STARTUP_ONCE"))
+		except OSError:
+			pass
+		# the outcome of the trial is the message the user gets; the ordinary
+		# "the menu could not start" notice would only say the same twice
+		self.update_conf(ENABLED=ENABLED_OFF, TRIAL=outcome, NOTIFIED=self.status())
+		return outcome
+
 	def disable(self, slot, settings=None):
 		"""STARTUP first, then the flag: a power cut in between is harmless."""
 		if self.startup_is_menu():
 			self.set_startup_slot(slot)
+		try:
+			if ("initrd=" + INITRD_REL) in self.read_text("STARTUP_ONCE").split():
+				os.remove(self.path("STARTUP_ONCE"))
+		except OSError:
+			pass
 		conf = self.read_conf()
 		conf.update({k: str(v) for k, v in (settings or {}).items()})
-		conf["ENABLED"] = "0"
+		conf["ENABLED"] = ENABLED_OFF
 		self.write_conf(conf)
 		return conf
 
@@ -443,7 +531,9 @@ class BootEnv:
 		"""Called by the plugin in every OBH slot at startup.
 		Returns a short description of what was done (or None)."""
 		conf = self.read_conf()
-		if conf.get("ENABLED") != "1":
+		if conf.get("ENABLED") == ENABLED_ONCE:
+			return "trial finished: %s" % self.cancel_trial()
+		if conf.get("ENABLED") != ENABLED_ON:
 			return None
 		changes = {}
 		if current_slot and int(current_slot) >= 1 and conf.get("LAST") != str(current_slot):
