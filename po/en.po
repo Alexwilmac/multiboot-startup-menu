@@ -57,8 +57,8 @@ msgstr "Last started image"
 msgid "Leave the boot menu settings?"
 msgstr "Leave the boot menu settings?"
 
-msgid "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual and nothing has changed."
-msgstr "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual and nothing has changed."
+msgid "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual or starts the Recovery: either way nothing has changed, and one more restart brings you back to your image."
+msgstr "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual or starts the Recovery: either way nothing has changed, and one more restart brings you back to your image."
 
 msgid "Make a backup of the slots you care about first, and only go on if you know how to reflash this receiver."
 msgstr "Make a backup of the slots you care about first, and only go on if you know how to reflash this receiver."
@@ -170,6 +170,9 @@ msgstr "The image highlighted when the menu appears. 'Last started image' follow
 
 msgid "The last trial worked: the menu appeared and started the image you chose."
 msgstr "The last trial worked: the menu appeared and started the image you chose."
+
+msgid "The plugin has been updated, but the receiver is still running the version loaded at startup.\n\nRestart the user interface (or the receiver) and try again."
+msgstr "The plugin has been updated, but the receiver is still running the version loaded at startup.\n\nRestart the user interface (or the receiver) and try again."
 
 msgid "The preview could not be shown:\n%s"
 msgstr "The preview could not be shown:\n%s"

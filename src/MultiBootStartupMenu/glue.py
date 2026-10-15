@@ -168,8 +168,62 @@ def fallback_recovery():
 	return (entry["startup"], "%s – %s" % (entry["label"], entry["name"]))
 
 
-def signature(entries, timeout, strings, model, recovery=None):
-	text = repr((VERSION, [(e["slot"], e["startup"], e["label"], e["name"], e["tag"]) for e in entries], int(timeout), sorted(strings.items()), model, recovery))
+def lcd_size():
+	"""The front display of this receiver, read where enigma2 reads it.
+
+	The same panel is there during the boot menu, so unlike the television
+	framebuffer there is nothing to discover at boot and record for next time:
+	what the running image reports is what the menu stage will find. The
+	values in these nodes are hexadecimal. None when the receiver has no
+	display the menu could draw on - a few characters of text, or none at
+	all - and then the menu simply does not use one."""
+	def node(name):
+		try:
+			with open("/proc/stb/lcd/" + name) as f:
+				return int(f.read().strip(), 16)
+		except (OSError, ValueError):
+			return 0
+	from .lcd import usable
+	size = (node("xres"), node("yres"))
+	return size if usable(size, node("bpp")) else None
+
+
+def osd_mode(env=None):
+	"""native or double: the menu stage puts the framebuffer on the screen at
+	its own size, or at exactly twice it, instead of letting the scaler
+	stretch it to fill the screen. Empty means the receiver decides, which is
+	what every version up to 0.7.8 did."""
+	try:
+		mode = (env or BootEnv()).read_conf().get("OSDMODE", "").strip().lower()
+	except OSError:
+		return ""
+	return mode if mode in ("native", "double") else ""
+
+
+def frame_size(env=None):
+	"""The framebuffer the menu stage will find at boot, as the menu stage
+	itself recorded it the last time it ran.
+
+	Unknown until the menu has run once, and 1920x1080 until then - which is
+	what every receiver was assumed to have up to 0.7.2, and what made the
+	menu look stretched on a Vu+ 4K, whose Recovery comes up at 1920x1440."""
+	env = env or BootEnv()
+	# With an OSD mode nothing stretches the picture any more, so the frames
+	# go back to the plain design size: there is nothing left to compensate.
+	if osd_mode(env):
+		return (1920, 1080)
+	try:
+		text = env.read_conf().get("FBNATIVE", "")
+		w, h = (int(v) for v in text.lower().split("x", 1))
+		if 640 <= w <= 4096 and 480 <= h <= 2304:
+			return (w, h)
+	except (ValueError, AttributeError):
+		pass
+	return (1920, 1080)
+
+
+def signature(entries, timeout, strings, model, recovery=None, size=None, osd="", lcd=None):
+	text = repr((VERSION, [(e["slot"], e["startup"], e["label"], e["name"], e["tag"]) for e in entries], int(timeout), sorted(strings.items()), model, recovery, size, osd, lcd))
 	return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
@@ -178,11 +232,14 @@ def render_frames(env, entries, timeout, strings=None, model=None):
 	strings = strings or menu_strings()
 	model = model if model is not None else model_name()
 	recovery = fallback_recovery()
-	sig = signature(entries, timeout, strings, model, recovery)
+	size = frame_size(env)
+	lcd = lcd_size()
+	sig = signature(entries, timeout, strings, model, recovery, size, osd_mode(env), lcd)
 	new = env.frames + ".new"
 	old = env.frames + ".old"
 	shutil.rmtree(new, ignore_errors=True)
-	MenuRenderer(entries, strings, model, timeout=int(timeout)).write_all(new, int(timeout), sig, recovery)
+	MenuRenderer(entries, strings, model, timeout=int(timeout), size=size).write_all(new, int(timeout), sig, recovery)
+	render_lcd_frames(new, entries, timeout, strings, lcd, recovery)
 	shutil.rmtree(old, ignore_errors=True)
 	if os.path.isdir(env.frames):
 		os.rename(env.frames, old)
@@ -190,6 +247,27 @@ def render_frames(env, entries, timeout, strings=None, model=None):
 	shutil.rmtree(old, ignore_errors=True)
 	fsync_dir(env.bm)
 	return sig
+
+
+def render_lcd_frames(folder, entries, timeout, strings, size, recovery=None):
+	"""The front display frames, beside the television ones, and the line in
+	menu.txt that tells the menu stage the panel is there.
+
+	A receiver without a usable front display just does not get them, and the
+	menu stage, finding no LCDSIZE line, does not look for them. Nothing here
+	may stop the menu being built: a display the plugin cannot draw for is a
+	missing convenience, not a failure."""
+	if not size:
+		return None
+	try:
+		from .lcd import LcdRenderer
+		LcdRenderer(entries, strings, size).write_all(folder, int(timeout), recovery)
+	except Exception as err:   # a font, a size, anything: the menu still works
+		print("[MultiBootStartupMenu] front display frames not made: %s" % err)
+		return None
+	with open(os.path.join(folder, "menu.txt"), "a", encoding="utf-8") as f:
+		f.write("LCDSIZE=%dx%d\n" % (size[0], size[1]))
+	return size
 
 
 def render_preview(entries, timeout, path, default_index=0, size=None):
@@ -239,7 +317,7 @@ def refresh_if_needed():
 	if entries:
 		strings = menu_strings()
 		model = model_name()
-		if signature(entries, timeout, strings, model, fallback_recovery()) != env.frames_signature():
+		if signature(entries, timeout, strings, model, fallback_recovery(), frame_size(env), osd_mode(env), lcd_size()) != env.frames_signature():
 			render_frames(env, entries, timeout, strings, model)
 			done.append("frames")
 	return ", ".join(done) or "up to date"
@@ -400,13 +478,20 @@ def report_line():
 	read."""
 	try:
 		env = BootEnv()
+		conf = env.read_conf()
 		parts = [
 			MODEL or "?",
 			image_version(),
 			"boot " + ("OK" if env.is_kexec_layout() else "NO"),
+			"fb %dx%d" % frame_size(env),
 			"tested" if is_tested() else "untested",
 		]
-		trial = env.read_conf().get("TRIAL")
+		# the code in the boot partition is updated by the plugin, so the two
+		# can be a reboot apart: a report naming only one of them is misleading
+		installed = conf.get("VERSION")
+		if installed and installed != VERSION:
+			parts.insert(0, "boot code %s" % installed)
+		trial = conf.get("TRIAL")
 		if trial:
 			parts.append("trial " + trial)
 		return "MBSM %s | %s" % (VERSION, " | ".join(parts))

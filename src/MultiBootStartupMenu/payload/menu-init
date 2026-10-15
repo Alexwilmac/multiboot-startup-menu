@@ -84,13 +84,20 @@ do_reboot() {
 		echo "REBOOT $1" > $R/reboot.called
 		exit 0
 	fi
-	mount -o remount,ro / 2>/dev/null
+	# Reset through sysrq rather than reboot(2). An ordinary reboot asks every
+	# driver to shut down first, and by now the whole Vu+ platform is up -
+	# tuners, CI, card readers, front panel, FPGA, wakeup driver - none of
+	# which the menu needed. If one of them hangs in its shutdown hook the box
+	# stays dark, which is what was happening on the way out of the menu.
+	# s = flush the filesystems, u = remount them read-only, b = reset now.
 	sync
-	reboot -f
-	sleep 3
-	echo s > /proc/sysrq-trigger
+	echo s > /proc/sysrq-trigger 2>/dev/null
 	sleep 1
-	echo b > /proc/sysrq-trigger
+	mount -o remount,ro / 2>/dev/null
+	echo u > /proc/sysrq-trigger 2>/dev/null
+	echo b > /proc/sysrq-trigger 2>/dev/null
+	sleep 3
+	reboot -f    # only reached if sysrq is not available in this kernel
 	while true; do sleep 1; done
 }
 
@@ -230,6 +237,12 @@ if [ -n "$OSD" ] && [ -w $R/proc/stb/fb/dst_left ]; then
 		log "osd $OSD"
 	fi
 fi
+# what the OSD rectangle actually is in this phase: enigma2 sets it when it
+# starts, nothing sets it here, and we have never seen its boot-time value
+for n in dst_left dst_top dst_width dst_height; do
+	[ -r $R/proc/stb/fb/$n ] && log "fb $n=$(cat $R/proc/stb/fb/$n 2>/dev/null)"
+done
+
 ALPHA=$(conf_get ALPHA)
 if is_number "$ALPHA" && [ -w $R/proc/stb/video/alpha ]; then
 	echo "$ALPHA" > $R/proc/stb/video/alpha 2>/dev/null

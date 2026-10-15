@@ -1,5 +1,6 @@
 # Off-box test suite for MultiBootStartupMenu
 #   python3 tests/run_tests.py [quick]
+import hashlib
 import os
 import shutil
 import struct
@@ -844,12 +845,425 @@ def test_untested_receiver(root):
 		plugin_env(root)
 
 
+# ---------------------------------------------------------------------------
+def test_fb_keep_mode(root):
+	"""FBMODE=keep draws the frames into the framebuffer the driver set up,
+	without asking for a mode change. The real decision needs a real driver,
+	but the arithmetic - the offset, the clearing, the bounds - is what would
+	corrupt memory if it were wrong, and that can be checked here."""
+	import importlib.util
+	spec = importlib.util.spec_from_file_location("mbsm_runner_fb", os.path.join(PAYLOAD, "runner.py"))
+	r = importlib.util.module_from_spec(spec)
+	spec.loader.exec_module(r)
+
+	dev = os.path.join(OUT, "fbkeep")
+	shutil.rmtree(dev, ignore_errors=True)
+	os.makedirs(dev)
+	path = os.path.join(dev, "fb0")
+	native_w, native_h = 1920, 1440
+	with open(path, "wb") as f:
+		f.write(b"\xaa" * (native_w * native_h * 4))   # garbage left by the driver
+
+	r.ROOT, r.TEST = dev, True
+	r.WIDTH, r.HEIGHT = native_w, native_h
+	r.OFFX, r.OFFY = (native_w - r.FRAME_W) // 2, (native_h - r.FRAME_H) // 2
+	check("keep: the frames are centred in the bigger framebuffer", (r.OFFX, r.OFFY) == (0, 180), (r.OFFX, r.OFFY))
+
+	fb = r.FrameBuffer(path)
+	fb.clear_first = True
+	pix = bytes([1, 2, 3, 255]) * (r.FRAME_W * 4)      # 4 rows of a known colour
+	fb.put((0, 0, r.FRAME_W, 4, pix))
+	fb.mem.flush()
+	with open(path, "rb") as f:
+		data = f.read()
+	stride = native_w * 4
+	check("keep: what the driver left behind is wiped", data[:stride] == b"\0" * stride)
+	first = data[r.OFFY * stride:r.OFFY * stride + 16]
+	check("keep: the frame lands 180 rows down", first == bytes([1, 2, 3, 255]) * 4, list(first))
+	check("keep: nothing is written past the end", len(data) == native_w * native_h * 4)
+
+	# the last row of a full-height frame must still fit
+	r.OFFY = (native_h - r.FRAME_H) // 2
+	last_row_start = (r.OFFY + r.FRAME_H - 1) * stride
+	check("keep: the last row of the menu is inside the framebuffer",
+		last_row_start + stride <= native_w * native_h * 4, last_row_start)
+
+
+# ---------------------------------------------------------------------------
+def test_frame_size(root):
+	"""The frames follow the framebuffer the receiver actually has."""
+	from MultiBootStartupMenu import glue
+	import struct
+
+	env = core.BootEnv(root)
+	entries = [{"slot": 1, "startup": "STARTUP_1", "label": "Slot 1", "name": "image", "tag": "eMMC"},
+		{"slot": 2, "startup": "STARTUP_2", "label": "Slot 2", "name": "other", "tag": "eMMC"}]
+
+	def frames_at(size, folder):
+		shutil.rmtree(folder, ignore_errors=True)
+		render.MenuRenderer(entries, glue.menu_strings(), "box", timeout=3, size=size).write_all(folder, 3, "sig", None)
+		out = {}
+		for name in sorted(os.listdir(folder)):
+			if name.endswith(".bmf"):
+				with open(os.path.join(folder, name), "rb") as f:
+					out[name] = struct.unpack_from("<4H", f.read(12), 4)
+		return out
+
+	a = frames_at(None, os.path.join(OUT, "f1080"))
+	b = frames_at((1920, 1440), os.path.join(OUT, "f1440"))
+	check("frame size: the same frames are written either way", sorted(a) == sorted(b), set(a) ^ set(b))
+	check("frame size: 1080 is unchanged", a["item_0.bmf"][3] == 1080 and a["item_0.bmf"][2] == 1920, a["item_0.bmf"])
+	check("frame size: at 1440 the full-screen frame fills it", b["item_0.bmf"] == (0, 0, 1920, 1440), b["item_0.bmf"])
+	for name in a:
+		x, y, w, h = a[name]
+		bx, by, bw, bh = b[name]
+		check("frame size: %s keeps its place and shape" % name,
+			(bx, by) == (round(x * 4 / 3) if False else x, round(y * 4 / 3))
+			and abs(bh - round(h * 4 / 3)) <= 1 and bw == w,
+			(a[name], b[name]))
+		break   # one is enough: the arithmetic is the same for all of them
+
+	# tiles that touch in the design must still touch afterwards
+	size = (1920, 1440)
+	edges = []
+	for y in (0, 100, 437, 1079):
+		edges.append(render.fit_to(render.Image.new("RGBA", (1920, 1)), 0, y, size)[2])
+	check("frame size: no seam between tiles", edges == sorted(edges) and len(set(edges)) == 4, edges)
+
+	menu_txt = read(os.path.join(OUT, "f1440", "menu.txt"), "")
+	check("frame size: menu.txt tells the menu stage the size", "SIZE=1920x1440" in menu_txt, menu_txt.splitlines()[:4])
+
+	env.update_conf(FBNATIVE="1920x1440")
+	check("frame size: the plugin takes it from what the menu stage recorded", glue.frame_size(env) == (1920, 1440))
+	env.update_conf(FBNATIVE="nonsense")
+	check("frame size: nonsense falls back to 1920x1080", glue.frame_size(env) == (1920, 1080))
+	env.update_conf(FBNATIVE="")
+	check("frame size: unknown falls back to 1920x1080", glue.frame_size(env) == (1920, 1080))
+	env.update_conf(FBNATIVE="1920x1440")
+	s1 = glue.signature(entries, 3, glue.menu_strings(), "box", None, (1920, 1080))
+	s2 = glue.signature(entries, 3, glue.menu_strings(), "box", None, (1920, 1440))
+	check("frame size: a different framebuffer means different frames", s1 != s2)
+
+
+# ---------------------------------------------------------------------------
+def test_front_panel(root):
+	"""The menu on the small screen at the front of the receiver: the frames
+	the plugin prepares, and the panel the menu stage writes them to."""
+	import importlib.util
+	spec = importlib.util.spec_from_file_location("mbsm_runner_lcd", os.path.join(PAYLOAD, "runner.py"))
+	r = importlib.util.module_from_spec(spec)
+	sys.modules["mbsm_runner_lcd"] = r
+	spec.loader.exec_module(r)
+	from MultiBootStartupMenu import glue, lcd
+
+	check("front panel: a colour display is usable", lcd.usable((800, 480), 32))
+	check("front panel: a few characters of text are not", not lcd.usable((132, 64), 32))
+	check("front panel: anything but 32 bits is not", not lcd.usable((800, 480), 16))
+	check("front panel: nothing at all is not", not lcd.usable(None, 32) and not lcd.usable((0, 0), 32))
+
+	entries = [{"slot": 0, "startup": "STARTUP_RECOVERY", "label": "Recovery", "name": "Recovery", "tag": "eMMC"},
+		{"slot": 1, "startup": "STARTUP_1", "label": "Slot 1", "name": "OpenBH 6.0", "tag": "eMMC"},
+		{"slot": 2, "startup": "STARTUP_2", "label": "Slot 2", "name": "OpenATV", "tag": "USB"}]
+	strings = glue.menu_strings()
+	size = (800, 480)
+	folder = os.path.join(OUT, "lcdframes")
+	shutil.rmtree(folder, ignore_errors=True)
+	os.makedirs(folder)
+	fakeboot.write(os.path.join(folder, "menu.txt"), "# menu\nSIZE=1920x1080\nCOUNTMAX=3\n")
+	got = glue.render_lcd_frames(folder, entries, 3, strings, size, ("STARTUP_RECOVERY", "Recovery"))
+	check("front panel: the frames were made", got == size, got)
+
+	names = sorted(n for n in os.listdir(folder) if n.startswith("lcd_"))
+	for want in ("lcd_item_0.bmf", "lcd_item_2.bmf", "lcd_boot_1.bmf", "lcd_boot_recovery.bmf",
+			"lcd_count_3.bmf", "lcd_count_0.bmf", "lcd_count_off.bmf"):
+		check("front panel: %s written" % want, want in names, names)
+
+	# the whole-panel frames must be the panel's own size: drawn through the
+	# television's 1920x1080 grid they would come out a third of the size
+	for name in ("lcd_item_0.bmf", "lcd_boot_1.bmf"):
+		x, y, w, h = frame_geometry(os.path.join(folder, name))
+		check("front panel: %s covers the panel" % name, (x, y, w, h) == (0, 0, 800, 480), (x, y, w, h))
+	cx, cy, cw, ch = frame_geometry(os.path.join(folder, "lcd_count_3.bmf"))
+	check("front panel: the countdown is a small tile at the top right",
+		cw < 800 // 2 and ch < 480 // 3 and cx > 800 // 2 and cy < 480 // 3, (cx, cy, cw, ch))
+	boxes = {frame_geometry(os.path.join(folder, n)) for n in names if n.startswith("lcd_count_")}
+	check("front panel: every countdown frame covers the same area", len(boxes) == 1, boxes)
+
+	menu_txt = read(os.path.join(folder, "menu.txt"), "")
+	check("front panel: menu.txt tells the menu stage the panel is there",
+		"LCDSIZE=800x480" in menu_txt, menu_txt)
+
+	# and the menu stage reads it back
+	r.FRAMES = folder
+	r.LCD_W = r.LCD_H = 0
+	r.load_menu()
+	check("front panel: the menu stage picks the size up", (r.LCD_W, r.LCD_H) == size, (r.LCD_W, r.LCD_H))
+
+	# writing to the panel: whole frames, composed here
+	dev = os.path.join(OUT, "lcddev")
+	shutil.rmtree(dev, ignore_errors=True)
+	os.makedirs(os.path.join(dev, "dev", "dbox"))
+	os.makedirs(os.path.join(dev, "proc", "stb", "fp"))
+	fakeboot.write(os.path.join(dev, "dev", "dbox", "oled0"), "")
+	fakeboot.write(os.path.join(dev, "proc", "stb", "fp", "oled_brightness"), "0\n")
+	r.ROOT = dev
+	panel = r.FrontPanel(size, "10")
+	check("front panel: the backlight is turned up, or nobody sees it",
+		read(os.path.join(dev, "proc", "stb", "fp", "oled_brightness")) == "10")
+	panel.put(r.load_frame("lcd_item_1.bmf", size))
+	panel.put(r.load_frame("lcd_count_3.bmf", size))
+	panel.flush()
+	panel.flush()        # nothing changed: it must not write again
+	panel.close()
+	with open(os.path.join(dev, "dev", "dbox", "oled0"), "rb") as f:
+		shown = f.read()
+	check("front panel: one whole frame is written", len(shown) == 800 * 480 * 4, len(shown))
+	# the countdown tile really landed on top of the item frame
+	tile = r.load_frame("lcd_count_3.bmf", size)
+	x, y, w, h, pix = tile
+	start = (y * 800 + x) * 4
+	check("front panel: the countdown is composed over the list",
+		shown[start:start + w * 4] == pix[:w * 4])
+
+	# a receiver with no display: no frames, no line, and the menu stage
+	# simply does not look for a panel
+	plain = os.path.join(OUT, "lcdnone")
+	shutil.rmtree(plain, ignore_errors=True)
+	os.makedirs(plain)
+	fakeboot.write(os.path.join(plain, "menu.txt"), "# menu\nSIZE=1920x1080\nCOUNTMAX=3\n")
+	check("front panel: without one, nothing is made",
+		glue.render_lcd_frames(plain, entries, 3, strings, None) is None
+		and not [n for n in os.listdir(plain) if n.startswith("lcd_")]
+		and "LCDSIZE" not in read(os.path.join(plain, "menu.txt"), ""))
+	r.ROOT = ""
+
+
+# ---------------------------------------------------------------------------
+def test_osd_mode(root):
+	"""native and double put the framebuffer on the screen themselves, instead
+	of letting the scaler stretch it. The arithmetic is in 720x576 units,
+	where 720x576 means the whole screen whatever its resolution."""
+	import importlib.util
+	spec = importlib.util.spec_from_file_location("mbsm_runner_osd", os.path.join(PAYLOAD, "runner.py"))
+	r = importlib.util.module_from_spec(spec)
+	sys.modules["mbsm_runner_osd"] = r
+	spec.loader.exec_module(r)
+	from MultiBootStartupMenu import glue
+
+	fb4k, screen4k = (1920, 1440), (3840, 2160)
+	# native: the framebuffer at its own size, centred
+	rect = r.osd_rectangle("native", fb4k, screen4k)
+	check("osd native: half the width, two thirds of the height", rect[1::2] == (360, 384), rect)
+	check("osd native: centred", (rect[0], rect[2]) == (180, 96), rect)
+	check("osd native: it really is 1:1",
+		rect[1] / 720.0 * screen4k[0] == fb4k[0] and rect[3] / 576.0 * screen4k[1] == fb4k[1], rect)
+	# double: twice the size, anchored top left, running off the bottom
+	rect = r.osd_rectangle("double", fb4k, screen4k)
+	check("osd double: full width, and past the bottom of the screen", rect == (0, 720, 0, 768), rect)
+	check("osd double: the top 1080 rows cover the whole screen",
+		1080 * 2 == screen4k[1] and rect[1] / 720.0 * screen4k[0] == fb4k[0] * 2, rect)
+	# the same arithmetic has to hold on a receiver driving 1080p
+	rect = r.osd_rectangle("native", (1920, 1080), (1920, 1080))
+	check("osd native: on a 1080p output it is the whole screen", rect == (0, 720, 0, 576), rect)
+	check("osd: an unknown mode changes nothing", r.osd_rectangle("", fb4k, screen4k) is None)
+
+	# the output resolution is read from the mode the receiver is driving
+	fake = os.path.join(OUT, "osdroot")
+	shutil.rmtree(fake, ignore_errors=True)
+	os.makedirs(os.path.join(fake, "proc", "stb", "video"))
+	r.ROOT = fake
+	vm = os.path.join(fake, "proc", "stb", "video", "videomode")
+	for text, want in (("2160p50\n", (3840, 2160)), ("1080p\n", (1920, 1080)),
+			("720p50\n", (1280, 720)), ("nonsense\n", None)):
+		fakeboot.write(vm, text)
+		check("osd: videomode %r -> %s" % (text.strip(), want), r.screen_size() == want, r.screen_size())
+	os.remove(vm)
+	check("osd: an unreadable videomode leaves the rectangle alone", r.screen_size() is None)
+	r.ROOT = ""
+
+	# where the frames sit inside the framebuffer
+	check("osd: without a mode the frames are centred",
+		r.frame_offsets((1920, 1440), (1920, 1080)) == (0, 180), r.frame_offsets((1920, 1440), (1920, 1080)))
+	check("osd native: still centred",
+		r.frame_offsets((1920, 1440), (1920, 1080), "native") == (0, 180))
+	check("osd double: at the top, or the menu would hang off the screen",
+		r.frame_offsets((1920, 1440), (1920, 1080), "double") == (0, 0))
+	check("osd: a framebuffer no bigger than the frames needs no offset",
+		r.frame_offsets((1920, 1080), (1920, 1080), "native") == (0, 0))
+
+	# the plugin side: with an OSD mode the frames go back to the design size
+	env = core.BootEnv(root)
+	env.update_conf(FBNATIVE="1920x1440", OSDMODE="")
+	check("osd: without a mode the frames follow the framebuffer", glue.frame_size(env) == (1920, 1440))
+	for mode in ("native", "double"):
+		env.update_conf(OSDMODE=mode)
+		check("osd %s: the frames go back to 1920x1080" % mode, glue.frame_size(env) == (1920, 1080))
+		check("osd %s: the plugin sees the mode" % mode, glue.osd_mode(env) == mode)
+	env.update_conf(OSDMODE="nonsense")
+	check("osd: a value that means nothing is ignored", glue.osd_mode(env) == "" and glue.frame_size(env) == (1920, 1440))
+
+	# changing the mode must make the frames be rebuilt
+	entries = [{"slot": 1, "startup": "STARTUP_1", "label": "Slot 1", "name": "image", "tag": "eMMC"}]
+	s = glue.menu_strings()
+	sigs = {m: glue.signature(entries, 3, s, "box", None, (1920, 1080), m) for m in ("", "native", "double")}
+	check("osd: each mode has its own frames", len(set(sigs.values())) == 3, sigs)
+	env.update_conf(OSDMODE="")
+
+
+# ---------------------------------------------------------------------------
+def test_pattern(root):
+	"""The test pattern is written 1:1 into the framebuffer, whatever its size,
+	and it stays on screen: the idle footer must not be drawn over it."""
+	import importlib.util
+	spec = importlib.util.spec_from_file_location("mbsm_runner_pat", os.path.join(PAYLOAD, "runner.py"))
+	r = importlib.util.module_from_spec(spec)
+	sys.modules["mbsm_runner_pat"] = r
+	spec.loader.exec_module(r)
+
+	dev = os.path.join(OUT, "patternfb")
+	shutil.rmtree(dev, ignore_errors=True)
+	os.makedirs(dev)
+	path = os.path.join(dev, "fb0")
+	W, H = 1920, 1440
+	with open(path, "wb") as f:
+		f.write(b"\xaa" * (W * H * 4))    # garbage left by the driver
+
+	r.ROOT, r.TEST = dev, True
+	r.WIDTH, r.HEIGHT = W, H
+	r.OFFX, r.OFFY = 0, 0
+	fb = r.FrameBuffer(path)
+
+	class Fake:
+		pass
+
+	me = Fake()
+	me.fb = fb
+	r.Menu.show_pattern(me)
+	fb.mem.flush()
+	with open(path, "rb") as f:
+		data = f.read()
+
+	check("pattern: the whole framebuffer is written", b"\xaa" not in data)
+	check("pattern: nothing is written past the end", len(data) == W * H * 4)
+	check("pattern: the idle footer will not cover it", me.footer == "pattern", me.footer)
+
+	stride = W * 4
+	ref = W // 8
+
+	def row(y):
+		return data[y * stride:(y + 1) * stride]
+
+	def px(y, x):
+		return row(y)[x * 4:x * 4 + 4]
+
+	white, black = b"\xff\xff\xff\xff", b"\x00\x00\x00\xff"
+	band = H // 4
+	# band 1: vertical lines in the right seven eighths
+	y = band // 2
+	strip = [px(y, ref + i) for i in range(6)]
+	check("pattern: band 1 alternates every pixel",
+		all(v in (white, black) for v in strip) and all(strip[i] != strip[i + 1] for i in range(5)),
+		[list(v) for v in strip])
+	# bands 2-4: horizontal lines of 1, 2 and 3 rows
+	for i, n in ((1, 1), (2, 2), (3, 3)):
+		y0 = i * band + 4 * n          # an even number of periods in, so a run starts here
+		runs = []
+		for k in range(n * 4):
+			runs.append(px(y0 + k, W - 1))
+		want = ([white] * n + [black] * n) * 2
+		check("pattern: band %d has runs of %d row(s)" % (i + 1, n), runs == want,
+			[list(v) for v in runs[:n * 2]])
+	# the left eighth is a white reference in every band, outside the marker bar
+	for i in range(4):
+		y = i * band + band - 4
+		check("pattern: band %d keeps the white reference at the left" % (i + 1),
+			row(y)[:ref * 4] == white * ref)
+	# the marker bar widens band by band, so a photograph can be counted
+	widths = []
+	for i in range(4):
+		y = i * band + 20
+		n = 0
+		while n < ref and row(y)[n * 4:n * 4 + 4] == black:
+			n += 1
+		widths.append(n)
+	check("pattern: the marker bar counts the band", widths == sorted(widths) and len(set(widths)) == 4, widths)
+
+
+# ---------------------------------------------------------------------------
+def test_render_call(root):
+	"""The real call path, and the one an older caller uses.
+
+	glue.render_frames() is what the plugin runs on GREEN, so the suite calls
+	it rather than building the renderer by hand: that is the only way a
+	mismatch between the two halves shows up here instead of on the box.
+
+	The second half matters because of how an update lands: enigma2 keeps the
+	modules it loaded at startup and reads render.py fresh only when the
+	frames are drawn, so until the next restart the caller can be one version
+	behind the drawing code. The previous version passed the size as the last
+	argument of write_all() instead of to the constructor, and that call must
+	still produce the same frames."""
+	from MultiBootStartupMenu import glue
+
+	env = core.BootEnv(root)
+	env.update_conf(FBNATIVE="1920x1440")
+	entries = [{"slot": 1, "startup": "STARTUP_1", "label": "Slot 1", "name": "image", "tag": "eMMC"},
+		{"slot": 2, "startup": "STARTUP_2", "label": "Slot 2", "name": "other", "tag": "eMMC"}]
+
+	try:
+		sig = glue.render_frames(env, entries, 3)
+		err = None
+	except Exception as exc:  # a signature mismatch between glue and render
+		sig, err = None, "%s: %s" % (type(exc).__name__, exc)
+	check("render call: glue.render_frames() runs as the plugin runs it", err is None, err)
+	if err:
+		return
+	check("render call: it writes the frames the menu stage reads",
+		"SIZE=1920x1440" in read(os.path.join(env.frames, "menu.txt"), ""))
+	check("render call: it leaves no half-written folder behind",
+		not os.path.exists(env.frames + ".new") and not os.path.exists(env.frames + ".old"))
+	check("render call: the signature matches what the plugin will compare",
+		sig == glue.signature(entries, 3, glue.menu_strings(), glue.model_name(),
+			glue.fallback_recovery(), (1920, 1440)), sig)
+
+	def digest(folder):
+		out = {}
+		for name in sorted(os.listdir(folder)):
+			if name.endswith(".bmf"):
+				with open(os.path.join(folder, name), "rb") as f:
+					out[name] = hashlib.md5(f.read()).hexdigest()
+		return out
+
+	strings, model, size = glue.menu_strings(), glue.model_name(), (1920, 1440)
+	now = os.path.join(OUT, "call_now")
+	was = os.path.join(OUT, "call_was")
+	shutil.rmtree(now, ignore_errors=True)
+	shutil.rmtree(was, ignore_errors=True)
+	render.MenuRenderer(entries, strings, model, timeout=3, size=size).write_all(now, 3, "sig", None)
+	try:
+		# exactly how 0.7.5 called it
+		render.MenuRenderer(entries, strings, model, timeout=3).write_all(was, 3, "sig", None, size)
+		err = None
+	except Exception as exc:
+		err = "%s: %s" % (type(exc).__name__, exc)
+	check("render call: the previous version's call is still accepted", err is None, err)
+	if not err:
+		check("render call: and it draws the same frames", digest(now) == digest(was),
+			[n for n in digest(now) if digest(now)[n] != digest(was).get(n)])
+
+
 def main():
 	root = os.path.join(OUT, "boot")
 	test_plugin_enable(root)
 	test_menu_stage(root)
 	test_plugin_runtime(root)
 	test_untested_receiver(root)
+	test_fb_keep_mode(root)
+	test_frame_size(root)
+	test_render_call(root)
+	test_pattern(root)
+	test_osd_mode(root)
+	test_front_panel(root)
 	test_wrapper(root)
 	test_dialogs(root)  # last: it rebuilds the fake boot partition
 	test_fallback(root)

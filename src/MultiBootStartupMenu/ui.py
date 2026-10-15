@@ -52,6 +52,19 @@ def log(text):
 	print("[MultiBootStartupMenu] %s" % text)
 
 
+def describe(error):
+	"""The text to show for a failure. A TypeError on the way to the drawing
+	code means the plugin was updated while enigma2 was running: part of it is
+	still the version loaded at startup and part is read fresh from disk, so
+	the two disagree. The Python message is no use to anybody - say what to do
+	instead."""
+	if isinstance(error, TypeError):
+		log("version mismatch between loaded and installed modules: %s" % error)
+		return _("The plugin has been updated, but the receiver is still running the version loaded at startup.\n\n"
+			"Restart the user interface (or the receiver) and try again.")
+	return str(error)
+
+
 def LoadPixmap_(path):
 	"""Tools.LoadPixmap, or loadPNG directly if that module is not there."""
 	try:
@@ -506,7 +519,7 @@ class MultiBootStartupMenuSetup(Setup):
 		dialog goes through openLater()."""
 		self.hideWait()
 		if error:
-			self.error(_("The boot menu could not be enabled:\n%s") % error)
+			self.error(_("The boot menu could not be enabled:\n%s") % describe(error))
 			return
 		self.conf = self.env.read_conf()
 		self.saved = True
@@ -581,7 +594,7 @@ class MultiBootStartupMenuSetup(Setup):
 		self.openLater(MessageBox, _(
 			"Load the boot menu at the next start only?\n\n"
 			"/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\n"
-			"If the menu does not appear, the receiver starts as usual and nothing has changed."),
+			"If the menu does not appear, the receiver starts as usual or starts the Recovery: either way nothing has changed, and one more restart brings you back to your image."),
 			MessageBox.TYPE_YESNO, default=False, callback=self.tryOnceAnswer)
 
 	def tryOnceAnswer(self, answer):
@@ -611,7 +624,7 @@ class MultiBootStartupMenuSetup(Setup):
 	def tryOnceReady(self, result, error):
 		self.hideWait()
 		if error:
-			self.error(_("The trial could not be prepared:\n%s") % error)
+			self.error(_("The trial could not be prepared:\n%s") % describe(error))
 			return
 		self.conf = self.env.read_conf()
 		self.saved = True
@@ -637,7 +650,7 @@ class MultiBootStartupMenuSetup(Setup):
 	def previewReady(self, result, error):
 		self.hideWait()
 		if error:
-			self.error(str(error))
+			self.error(describe(error))
 			return
 		self.openLater(MultiBootStartupMenuPreview, result, callback=self.previewClosed)
 

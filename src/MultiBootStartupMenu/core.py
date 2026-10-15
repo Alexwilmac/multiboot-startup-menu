@@ -12,7 +12,7 @@ import os
 import shutil
 import time
 
-VERSION = "0.7.1"
+VERSION = "0.8.2"
 BOOT = "/boot"  # root of the boot partition (Recovery + slots) as mounted in a Vu+ kexec slot
 BMNAME = "bootmenu"
 INITRD_NAME = "bootmenu.cpio.gz"
@@ -45,7 +45,7 @@ UNVERIFIED = ".unverified"
 # (only STARTUP_ONCE was written, STARTUP is untouched), "0" otherwise.
 ENABLED_OFF, ENABLED_ON, ENABLED_ONCE = "0", "1", "once"
 
-CONF_KEYS = ("ENABLED", "TIMEOUT", "DEFAULT", "LAST", "SHOWRECOVERY", "VIDEOMODE", "OSD", "ALPHA", "RCCODE", "RCTYPE", "VERSION", "INITRD_MD5", "SOURCE_MD5", "NOTIFIED", "MODEL", "UNTESTED", "TRIAL")
+CONF_KEYS = ("ENABLED", "TIMEOUT", "DEFAULT", "LAST", "SHOWRECOVERY", "VIDEOMODE", "OSD", "ALPHA", "RCCODE", "RCTYPE", "VERSION", "INITRD_MD5", "SOURCE_MD5", "NOTIFIED", "MODEL", "UNTESTED", "TRIAL", "FBMODE", "FBNATIVE", "OSDMODE", "LCD", "LCDBRIGHT")
 CONF_DEFAULTS = {
 	"ENABLED": "0",
 	"TIMEOUT": str(DEFAULT_TIMEOUT),
@@ -53,6 +53,9 @@ CONF_DEFAULTS = {
 	"LAST": "",
 	"SHOWRECOVERY": "1",
 	"VIDEOMODE": "",
+	"OSDMODE": "",
+	"LCD": "1",
+	"LCDBRIGHT": "255",
 	"OSD": "",
 	"ALPHA": "",
 	"RCCODE": "",
@@ -64,6 +67,8 @@ CONF_DEFAULTS = {
 	"MODEL": "",
 	"UNTESTED": "0",
 	"TRIAL": "",
+	"FBMODE": "",
+	"FBNATIVE": "",
 }
 
 

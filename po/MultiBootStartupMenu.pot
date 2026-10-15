@@ -57,7 +57,7 @@ msgstr ""
 msgid "Leave the boot menu settings?"
 msgstr ""
 
-msgid "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual and nothing has changed."
+msgid "Load the boot menu at the next start only?\n\n/boot/STARTUP is not changed: the menu appears once, starts the image you choose and the receiver goes back to starting that image directly.\n\nIf the menu does not appear, the receiver starts as usual or starts the Recovery: either way nothing has changed, and one more restart brings you back to your image."
 msgstr ""
 
 msgid "Make a backup of the slots you care about first, and only go on if you know how to reflash this receiver."
@@ -169,6 +169,9 @@ msgid "The image highlighted when the menu appears. 'Last started image' follows
 msgstr ""
 
 msgid "The last trial worked: the menu appeared and started the image you chose."
+msgstr ""
+
+msgid "The plugin has been updated, but the receiver is still running the version loaded at startup.\n\nRestart the user interface (or the receiver) and try again."
 msgstr ""
 
 msgid "The preview could not be shown:\n%s"
